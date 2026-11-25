@@ -1,4 +1,5 @@
 import os
+import time
 
 import httpx
 import psycopg
@@ -17,10 +18,18 @@ def get_connection():
 
 
 def main():
-    response = httpx.get(LOCATION_URL, timeout=30.0)
+    response = httpx.get(
+        LOCATION_URL,
+        timeout=30.0,
+    )
     response.raise_for_status()
 
     locations = response.json()
+
+    by_id = {
+        player["id"]: player
+        for player in locations
+    }
 
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -32,20 +41,26 @@ def main():
                 """
             )
 
-            watched_ids = {row[0] for row in cur.fetchall()}
-
-            matches = [
-                player
-                for player in locations
-                if player["id"] in watched_ids
+            watched_users = [
+                row[0]
+                for row in cur.fetchall()
             ]
 
-            for player in matches:
+            updated = 0
+
+            for turf_user_id in watched_users:
+                player = by_id.get(turf_user_id)
+
+                if not player:
+                    continue
+
+                latitude = player["latitude"]
+                longitude = player["longitude"]
+
                 cur.execute(
                     """
                     UPDATE users
                     SET
-                        turf_name = %s,
                         latitude = %s,
                         longitude = %s,
                         location = ST_SetSRID(
@@ -57,21 +72,31 @@ def main():
                     WHERE turf_user_id = %s
                     """,
                     (
-                        player["name"],
-                        player["latitude"],
-                        player["longitude"],
-                        player["longitude"],
-                        player["latitude"],
-                        player["id"],
+                        latitude,
+                        longitude,
+                        longitude,
+                        latitude,
+                        turf_user_id,
                     ),
                 )
 
+                updated += 1
+
     print(
-        f"Location feed: {len(locations)} players, "
-        f"{len(matches)} watched users found",
+        f"Location feed: {len(locations)} visible players, "
+        f"updated {updated} watched users",
         flush=True,
     )
 
 
 if __name__ == "__main__":
-    main()
+    while True:
+        try:
+            main()
+        except Exception as exc:
+            print(
+                f"Location worker error: {exc}",
+                flush=True,
+            )
+
+        time.sleep(30)

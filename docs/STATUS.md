@@ -101,13 +101,33 @@ Vid rundbyte ska round-worker:
 5. Sätta `last_takeover_time` till nya rundans starttid.
 6. Låta takeover-workern återbygga aktuell ägarbild.
 
-### Äldre API
+### Users
 
-V3 används endast där lämplig V6-funktion saknas.
+`POST https://api.turfgame.com/v6/users`
+
+Request:
+
+`[{"id": 28449}]`
+
+eller lookup via namn:
+
+`[{"name": "blodyx"}]`
 
 Verifierat för `blodyx`:
+
 - Turf user ID: `28449`
-- namn: `blodyx`
+- uniqueZonesTaken: `2285`
+- taken: `51310`
+- hemregion: `127 / Västerbotten`
+- `zones` innehåller zoner användaren äger i aktuell runda
+- `medals` innehåller medaljinstanser och kan innehålla samma medalj-ID flera gånger
+- medalj 24 förekommer 12 gånger för `blodyx`
+
+### API-princip
+
+TurfRadar använder Turf API v6 för produktionslogik.
+
+Äldre API-versioner ska inte vara beroenden i TurfRadar.
 
 ## Databas
 
