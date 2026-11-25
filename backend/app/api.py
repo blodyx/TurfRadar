@@ -1,14 +1,28 @@
 import os
-from pydantic import BaseModel
+
 import psycopg
-from psycopg.rows import dict_row
 from fastapi import FastAPI, HTTPException
+from psycopg.rows import dict_row
+from pydantic import BaseModel
 
 
 app = FastAPI(
     title="TurfRadar",
     version="0.1.0",
 )
+
+
+ALLOWED_RADII = {
+    500,
+    1000,
+    2000,
+    5000,
+}
+
+
+class RadarSettings(BaseModel):
+    radiusM: int | None = None
+    radarEnabled: bool | None = None
 
 
 def get_connection():
@@ -20,50 +34,6 @@ def get_connection():
         row_factory=dict_row,
     )
 
-class RadarSettings(BaseModel):
-    radiusM: int
-
-@app.patch("/api/settings")
-def update_settings(
-    settings: RadarSettings,
-    turf_user_id: int = 28449,
-):
-    allowed_radii = {500, 1000, 2000, 5000}
-
-    if settings.radiusM not in allowed_radii:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid radar radius",
-        )
-
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE users
-                SET
-                    radius_m = %s,
-                    updated_at = NOW()
-                WHERE turf_user_id = %s
-                RETURNING radius_m
-                """,
-                (
-                    settings.radiusM,
-                    turf_user_id,
-                ),
-            )
-
-            row = cur.fetchone()
-
-            if not row:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Radar user not found",
-                )
-
-    return {
-        "radiusM": row["radius_m"],
-    }
 
 @app.get("/api/health")
 def health():
@@ -84,6 +54,7 @@ def radar(turf_user_id: int = 28449):
                     turf_user_id,
                     turf_name,
                     radius_m,
+                    radar_enabled,
                     latitude,
                     longitude,
                     position_updated_at,
@@ -94,7 +65,6 @@ def radar(turf_user_id: int = 28449):
                     )::INTEGER AS position_age_seconds
                 FROM users
                 WHERE turf_user_id = %s
-                  AND active = TRUE
                 """,
                 (turf_user_id,),
             )
@@ -107,7 +77,10 @@ def radar(turf_user_id: int = 28449):
                     detail="Radar user not found",
                 )
 
-            if user["latitude"] is None:
+            if (
+                user["latitude"] is None
+                or user["longitude"] is None
+            ):
                 raise HTTPException(
                     status_code=409,
                     detail="No known position",
@@ -129,12 +102,15 @@ def radar(turf_user_id: int = 28449):
                         )
                     )::INTEGER AS distance_m
                 FROM zones z
-                JOIN users u ON u.id = %s
-                WHERE ST_DWithin(
-                    z.location,
-                    u.location,
-                    u.radius_m
-                )
+                JOIN users u
+                    ON u.id = %s
+                WHERE
+                    u.location IS NOT NULL
+                    AND ST_DWithin(
+                        z.location,
+                        u.location,
+                        u.radius_m
+                    )
                 ORDER BY distance_m
                 """,
                 (user["id"],),
@@ -153,6 +129,7 @@ def radar(turf_user_id: int = 28449):
             "turfUserId": user["turf_user_id"],
             "name": user["turf_name"],
             "radiusM": user["radius_m"],
+            "radarEnabled": user["radar_enabled"],
             "latitude": user["latitude"],
             "longitude": user["longitude"],
             "positionUpdatedAt": user[
@@ -167,4 +144,68 @@ def radar(turf_user_id: int = 28449):
             "ownedZones": owned_count,
         },
         "zones": zones[:20],
+    }
+
+
+@app.patch("/api/settings")
+def update_settings(
+    settings: RadarSettings,
+    turf_user_id: int = 28449,
+):
+    if (
+        settings.radiusM is None
+        and settings.radarEnabled is None
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="No settings supplied",
+        )
+
+    if (
+        settings.radiusM is not None
+        and settings.radiusM not in ALLOWED_RADII
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid radar radius",
+        )
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE users
+                SET
+                    radius_m = COALESCE(
+                        %(radius_m)s,
+                        radius_m
+                    ),
+                    radar_enabled = COALESCE(
+                        %(radar_enabled)s,
+                        radar_enabled
+                    ),
+                    updated_at = NOW()
+                WHERE turf_user_id = %(turf_user_id)s
+                RETURNING
+                    radius_m,
+                    radar_enabled
+                """,
+                {
+                    "radius_m": settings.radiusM,
+                    "radar_enabled": settings.radarEnabled,
+                    "turf_user_id": turf_user_id,
+                },
+            )
+
+            row = cur.fetchone()
+
+            if not row:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Radar user not found",
+                )
+
+    return {
+        "radiusM": row["radius_m"],
+        "radarEnabled": row["radar_enabled"],
     }

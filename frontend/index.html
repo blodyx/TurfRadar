@@ -142,6 +142,51 @@
     	    border-color: #62d7ff;
 	}
 	    
+	.controls {
+    display: grid;
+    gap: 14px;
+}
+
+.toggle-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+}
+
+.toggle-row span {
+    display: grid;
+    gap: 3px;
+}
+
+.toggle-row small {
+    color: #8ea5bb;
+}
+
+.toggle-row input {
+    width: 24px;
+    height: 24px;
+    accent-color: #38bdf8;
+}
+
+.refresh-button {
+    border: 1px solid #29445d;
+    border-radius: 10px;
+    padding: 12px;
+    background: #0b1724;
+    color: #eef6ff;
+    font: inherit;
+    font-weight: 700;
+}
+
+.refresh-button:active {
+    background: #162a3e;
+}
+
+.last-refresh {
+    color: #7f95a8;
+    font-size: 13px;
+}
     </style>
 </head>
 
@@ -166,6 +211,31 @@
     </div>
     </section>
 
+    <section class="card controls">
+    <label class="toggle-row">
+    <span>
+        <strong>Radar</strong>
+        <small>Bevakning och framtida notiser</small>
+    </span>
+
+    <input type="checkbox" id="radar-enabled">
+        <span>
+            <strong>Auto-refresh</strong>
+            <small>Uppdatera sidan var 30:e sekund</small>
+        </span>
+
+        <input type="checkbox" id="auto-refresh" checked>
+    </label>
+
+    <button id="refresh-now" class="refresh-button">
+        Uppdatera nu
+    </button>
+
+    <div class="last-refresh">
+        Dashboard uppdaterad:
+        <span id="last-refresh">–</span>
+    </div>
+</section>
 
     <section class="stats">
         <div class="stat">
@@ -214,6 +284,8 @@ async function loadRadar() {
 
         const data = await response.json();
 
+	document.getElementById("radar-enabled").checked =
+    	    data.user.radarEnabled;
 	updateRadiusButtons(data.user.radiusM);    
 
         profile.innerHTML = `
@@ -233,6 +305,9 @@ async function loadRadar() {
 
         document.getElementById("owned-count").textContent =
             data.summary.ownedZones;
+
+	document.getElementById("last-refresh").textContent =
+    	    new Date().toLocaleTimeString("sv-SE");
 
         const zones = document.getElementById("zones");
         zones.innerHTML = "";
@@ -305,7 +380,72 @@ document
             }
         });
     });
+const autoRefresh = document.getElementById("auto-refresh");
+const refreshNow = document.getElementById("refresh-now");
+
+let refreshTimer = null;
+
+const savedAutoRefresh =
+    localStorage.getItem("turfradar-auto-refresh");
+
+const radarEnabled =
+    document.getElementById("radar-enabled");
+
+radarEnabled.addEventListener("change", async () => {
+    const response = await fetch(
+        "/turfradar/api/settings",
+        {
+            method: "PATCH",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                radarEnabled: radarEnabled.checked
+            })
+        }
+    );
+
+    if (!response.ok) {
+        radarEnabled.checked = !radarEnabled.checked;
+        return;
+    }
+
+    await loadRadar();
+});
+
+if (savedAutoRefresh !== null) {
+    autoRefresh.checked = savedAutoRefresh === "true";
+}
+
+function configureAutoRefresh() {
+    if (refreshTimer) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+    }
+
+    if (autoRefresh.checked) {
+        refreshTimer = setInterval(
+            loadRadar,
+            30000
+        );
+    }
+}
+
+autoRefresh.addEventListener("change", () => {
+    localStorage.setItem(
+        "turfradar-auto-refresh",
+        autoRefresh.checked
+    );
+
+    configureAutoRefresh();
+});
+
+refreshNow.addEventListener("click", () => {
+    loadRadar();
+});
+
 loadRadar();
+configureAutoRefresh();
 </script>
 </body>
 </html>

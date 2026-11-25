@@ -95,7 +95,7 @@ def main():
                     turf_name,
                     radius_m
                 FROM users
-                WHERE active = TRUE
+                WHERE radar_enabled = TRUE
                 """
             )
 

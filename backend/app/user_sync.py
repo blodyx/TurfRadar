@@ -136,7 +136,6 @@ def main():
                 """
                 SELECT turf_user_id
                 FROM users
-                WHERE active = TRUE
                 """
             )
 
