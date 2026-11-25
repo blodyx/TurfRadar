@@ -1,257 +1,304 @@
-# TurfRadar – Status
+# TurfRadar - Status
 
-## Mål
+Last updated: 2026-11-25
 
-TurfRadar är en PWA/webbtjänst som passivt bevakar Turf och notifierar användaren när något intressant finns i närheten.
+## Goal
 
-V1 ska vara enkel: senaste kända position + vald radie + relevanta Turf-träffar.
+TurfRadar is a mobile-first PWA that passively watches Turf and alerts a player when an actionable Turf opportunity appears near the player's latest known position.
 
-## V1 – planerade träfftyper
+V1 remains intentionally basic. Routing, movement direction and advanced medal logic must not block the core radar.
 
-- Unikaturfare: zon ägs av en spelare användaren aldrig tagit från.
-- Otagen zon: zon användaren aldrig tagit.
-- Otagen region: zon i region användaren aldrig tagit.
-- Kombinerade träffar ska prioriteras högre.
+## V1 opportunity model
 
-Historiska tagna zoner och regioner saknar för närvarande en bra importkälla och blockerar inte fortsatt utveckling.
+Planned opportunity types:
 
-## Infrastruktur
+- **Unikaturfare**: current zone owner is a player the user has never taken a zone from.
+- **Untaken zone**: zone has never been taken by the user.
+- **Untaken region**: zone belongs to a region in which the user has never taken a zone.
+- **Combined opportunity**: multiple valuable properties at the same location should be combined and prioritized.
 
-- Server: Contabo VPS
+Later versions may include medal-aware, attribute-aware, directional and route-aware opportunities.
+
+## Infrastructure
+
+- VPS provider: Contabo
 - OS: Ubuntu 24.04 LTS
-- Repo: blodyx/TurfRadar
+- Host resources observed: about 8 GB RAM, very low CPU/load under current TurfRadar workload
+- Public site: `https://farstad.se/turfradar/`
+- Git repository: `blodyx/TurfRadar`
 - Docker + Docker Compose
+- Caddy for HTTPS and reverse proxy
 - PostgreSQL 17 + PostGIS 3.5
-- Persistent Docker-volume för databasen
-- GitHub-access från servern via SSH
+- Persistent Docker volume for PostgreSQL
+- GitHub authentication from server via SSH key
 
-## Containers
+## Running services
 
-- `db`
-  - PostgreSQL/PostGIS
-- `worker`
-  - inkrementell takeover-feed
-  - pollar var 60:e sekund
-- `round-worker`
-  - kontrollerar aktiv Turf-runda var 10:e minut
+Current Compose services:
 
-Alla använder `restart: unless-stopped`.
+- `db` - PostgreSQL/PostGIS
+- `api` - FastAPI, bound to `127.0.0.1:8000`
+- `worker` - takeover feed worker
+- `round-worker` - Turf round monitor/reset worker
+- `location-worker` - watched-user location worker
+- `radar-worker` - proximity radar worker
 
-## Turf API
+Services use `restart: unless-stopped`.
 
-### Full zonlista
+## Turf zone state
+
+A full v6 bootstrap loaded approximately 157k Turf zones. After import the database contained **157,496 zones**.
+
+`zones.id` is the Turf zone ID and is the table primary key.
+
+Spatial queries are verified:
+
+- `ST_DWithin()` correctly finds zones inside a user radius.
+- `ST_Distance()` returns useful distance in metres.
+- GiST index exists on `zones.location`.
+
+A real test from `blodyx`'s live Turf position found **121 zones within 2,000 m** and at that time **78 had a known current owner**.
+
+## Turf API v6 integrations
+
+### Full zones
 
 `GET https://api.turfgame.com/v6/zones/all`
 
-- Returnerar alla zoner.
-- Ska hämtas med gzip.
-- Max ett anrop per 30 minuter.
-- Listan uppdateras minst en gång per timme.
-- Senaste bootstrap: cirka 157 000 zoner.
-- Databasen innehöll 157 496 zoner efter första full-sync.
+Used for full zone bootstrap/sync.
 
-Används för statisk/grundläggande zoninformation:
-- Turf zone ID
-- namn
-- lat/lon
-- region och area
-- land
-- zontyp
-- PPH
-- takeover points
-- total takeovers
-- creation date
+Known behavior:
 
-### Takeover-feed
+- Returns all zones.
+- Contains stable zone IDs and geographic/region metadata.
+- Send `Accept-Encoding: gzip` / use compressed transfer.
+- Only one request per 30 minutes is allowed.
+- The list updates at least hourly.
+
+### Takeover feed
 
 `GET https://api.turfgame.com/v6/feeds/takeover`
 
-Stödjer:
+Uses optional `afterDate`.
 
-`afterDate=<timestamp>`
+Current worker behavior:
 
-Takeover-workern:
-1. Läser `last_takeover_time` från `system_state`.
-2. Drar av 2 minuter som säkerhetsöverlapp.
-3. Hämtar bara nyare events.
-4. UPSERT:ar zonerna.
-5. Sparar senaste observerade eventtid.
+1. Read `last_takeover_time` from `system_state`.
+2. Subtract two minutes for a safety overlap.
+3. Request only events newer than that timestamp.
+4. UPSERT zones by Turf zone ID.
+5. Store the newest observed event time.
+6. Sleep 60 seconds.
 
-Överlappet är säkert eftersom UPSERT på Turf zone ID är idempotent.
+The overlap is safe because the operation is idempotent by zone ID.
 
 ### Rounds
 
 `GET https://api.turfgame.com/v6/rounds`
 
-Aktuell runda identifieras som senaste `start <= now`.
+Current round is selected as the latest round whose `start <= now`.
 
-Aktuell observerad runda:
-- November
-- start: `2026-11-01T11:00:00+0000`
+Observed data while developing:
 
-Nästa kända runda:
-- December
-- start: `2026-12-06T11:00:00+0000`
+- November round start: `2026-11-01T11:00:00+0000`
+- December round start: `2026-12-06T11:00:00+0000`
 
-Vid rundbyte ska round-worker:
-1. Nolla `current_owner_id`.
-2. Nolla `current_owner_name`.
-3. Nolla `date_last_taken`.
-4. Uppdatera `current_round_start`.
-5. Sätta `last_takeover_time` till nya rundans starttid.
-6. Låta takeover-workern återbygga aktuell ägarbild.
+At a detected round change:
+
+1. `current_owner_id` is cleared.
+2. `current_owner_name` is cleared.
+3. `date_last_taken` is cleared.
+4. `current_round_start` is updated.
+5. `last_takeover_time` is set to the new round start.
+6. The takeover worker rebuilds owner state from the new round.
 
 ### Users
 
 `POST https://api.turfgame.com/v6/users`
 
-Request:
-
-`[{"id": 28449}]`
-
-eller lookup via namn:
-
-`[{"name": "blodyx"}]`
-
-Verifierat för `blodyx`:
+Verified for Turf user `blodyx`:
 
 - Turf user ID: `28449`
-- uniqueZonesTaken: `2285`
-- taken: `51310`
-- hemregion: `127 / Västerbotten`
-- `zones` innehåller zoner användaren äger i aktuell runda
-- `medals` innehåller medaljinstanser och kan innehålla samma medalj-ID flera gånger
-- medalj 24 förekommer 12 gånger för `blodyx`
+- `uniqueZonesTaken`: `2285`
+- `taken`: `51310`
+- region: `127 / Västerbotten`
+- `zones` represents zones currently owned by the user
+- `medals` can contain repeated medal IDs
 
-### API-princip
+Medal ID `24` appeared 12 times for `blodyx`, reflecting repeatable event-medal occurrences. TurfRadar therefore preserves medal occurrences rather than deduplicating them.
 
-TurfRadar använder Turf API v6 för produktionslogik.
+### User locations
 
-Äldre API-versioner ska inte vara beroenden i TurfRadar.
+`GET https://api.turfgame.com/v6/users/location`
 
-## Databas
+Returns users currently represented on the Turf map with `id`, `name`, `latitude` and `longitude`.
 
-### zones
+Verified `blodyx` position during development:
 
-Primärnyckeln är Turf-zonens eget stabila ID:
+- latitude `63.825998`
+- longitude `20.304683`
 
-`zones.id = Turf zone ID`
+When a watched user disappears from the feed, TurfRadar retains the last known position instead of clearing it.
 
-Ingen separat intern zone-ID används.
+Position age is metadata/quality information, not a hard blocker for the radar.
 
-Viktiga fält:
-- id
+## Database
+
+### `zones`
+
+Important fields:
+
+- Turf zone ID primary key
 - name
-- latitude
-- longitude
-- location `GEOGRAPHY(POINT,4326)`
-- current_owner_id
-- current_owner_name
-- region_id
-- region_name
-- area_id
-- area_name
+- latitude / longitude
+- `location GEOGRAPHY(POINT, 4326)`
+- current owner ID/name
+- region ID/name
+- area ID/name
 - country
-- zone_type_id
-- zone_type_name
-- points_per_hour
-- takeover_points
-- total_takeovers
-- date_created
-- date_last_taken
-- updated_at
+- zone type ID/name
+- points per hour
+- takeover points
+- total takeovers
+- creation date
+- last-taken date
+- updated timestamp
 
-GiST-index finns på `location`.
+### `system_state`
 
-Verifierat:
-- `ST_DWithin()` fungerar för radiesökning.
-- `ST_Distance()` ger avstånd i meter.
+Persistent worker checkpoints/state.
 
-### system_state
+Known keys:
 
-Persistent key/value-state.
-
-Aktuella keys:
 - `last_takeover_time`
 - `current_round_start`
 
-### users
+### `users`
 
-Tabell finns för bevakade användare.
+Contains:
 
-Viktiga fält:
-- internt ID
-- turf_user_id
-- turf_name
-- radius_m
-- latitude
-- longitude
-- location
-- position_updated_at
-- active
+- internal ID
+- Turf user ID/name
+- `radar_enabled`
+- radius
+- last known lat/lon/PostGIS point
+- `position_updated_at`
+- country/region
+- unique-zone count
+- total takes
+- rank and total points
+- profile update timestamp
 
-Första användare:
-- Turf name: `blodyx`
-- Turf user ID: `28449`
-- default radie: 2000 m
+Current developer/test user:
 
-## Verifierat fungerande
+- `blodyx`
+- Turf ID `28449`
 
-- Docker/Compose
-- PostgreSQL/PostGIS
-- GitHub push över SSH
-- full hämtning av alla Turf-zoner
-- import/UPSERT av cirka 157k zoner
-- geografiska PostGIS-frågor
-- takeover-feed
-- inkrementell takeover-feed med `afterDate`
-- persistent takeover-checkpoint
-- automatisk round-detektering
-- skydd mot reset när rundan är oförändrad
-- round-resetkod
-- permanenta background workers
+`radar_enabled` must only control radar/notification behavior. Profile, medal, location and future history collection must not be disabled by this flag.
 
-## Medvetet parkerat
+### `user_medals`
 
-- Historiska tagna zoner
-- Historiska tagna regioner
-- TvT/import av tidigare tagna spelare
-- Web Push
-- PWA/frontend
-- login/autentisering
-- Caddy/HTTPS
-- medaljlogik
-- färdriktningsmedvetenhet
-- ruttmedvetenhet
+Stores each medal occurrence separately.
 
-## Versioner
+The tuple effectively includes:
 
-### V1
+- local user ID
+- medal ID
+- occurrence number
 
-Basic radius radar.
+This intentionally preserves repeated event medals.
 
-`senaste position -> zoner inom X meter -> regler -> notifiering`
+### `push_subscriptions`
 
-Ingen routing.
+Stores one Web Push subscription per browser/device endpoint:
 
-### V2
+- local user ID
+- endpoint
+- p256dh key
+- auth key
+- timestamps
 
-Rörelseriktning och hastighet.
+A user may later have multiple devices/subscriptions.
 
-Radarn tittar längre framför än bakom användaren.
+## API and frontend
 
-### V3
+FastAPI is reachable through Caddy at `/turfradar/api/...`.
 
-Destination/ruttkorridor och faktisk uppskattad omväg.
+Verified backend functions include:
 
-## Nästa steg
+- health
+- radar result
+- server-side radius updates
+- server-side radar enabled/disabled state
+- VAPID public key
+- push subscription registration
 
-**Lös användarens senaste position.**
+The mobile dashboard currently shows:
 
-När positionen finns ska första personliga radarsvepet kunna göras:
+- TurfRadar identity
+- Turf username
+- last-known-position age
+- radius
+- number of nearby zones
+- number with known owner
+- nearest zones, owners and distances
+- radius buttons: 500 m / 1 km / 2 km / 5 km
+- radar on/off
+- auto-refresh on/off
+- manual refresh
+- dashboard refreshed timestamp
+- Web Push activation
 
-`users.location -> ST_DWithin(zones.location, radius_m) -> kandidater`
+Auto-refresh is browser-local state and defaults to a 30-second cycle when enabled.
 
-Därefter byggs opportunity-filtreringen ovanpå resultatet.
+## PWA and Web Push
 
-Historiska tagna zoner/regioner behöver inte lösas innan själva radarsvepet fungerar.
+TurfRadar is installable as a PWA from an iPhone Home Screen.
+
+PWA assets include:
+
+- `manifest.webmanifest`
+- `service-worker.js`
+- 192x192 app icon
+- 512x512 app icon
+- 180x180 Apple touch icon
+
+Brand icon: an original Turf-like walking/explorer figure inside classic radar rings, on TurfRadar's dark background.
+
+Web Push has been verified end-to-end on iPhone:
+
+1. Installed Home Screen PWA requested notification permission.
+2. Browser push subscription was stored in PostgreSQL.
+3. Server sent a signed Web Push using VAPID.
+4. iPhone displayed the notification even when TurfRadar was closed.
+
+VAPID private/public PEM files are stored under `secrets/` and ignored by Git.
+
+## Current ownership caveat
+
+TurfRadar was bootstrapped in the middle of an existing Turf round. Therefore a NULL `current_owner_id` currently means "not known by TurfRadar" and must not yet be treated as guaranteed neutral.
+
+This is intentionally parked. There are no production users before the next round start. At the next known round reset TurfRadar clears all owners from a known neutral baseline and then rebuilds owner state from takeover events.
+
+## Deliberately parked
+
+- Import of historical taken opponents / unikaturfare history
+- Import of historical unique zones
+- Historical regions taken
+- Opportunity scoring and grouping
+- Notification history/cooldown
+- Medal opportunity rules
+- Direction-aware radar
+- Route-aware radar
+- Multi-user authentication/account onboarding
+
+## Next steps
+
+Recommended order:
+
+1. Build notification history and cooldown/grouping.
+2. Connect opportunity/radar results to Web Push without notification spam.
+3. Find a robust history import/source for previously taken opponents.
+4. Add untaken-zone and untaken-region history when a suitable source exists.
+5. Automate full `/zones/all` refresh safely around its 30-minute rate limit.
+6. Implement automatic PostgreSQL backups and test restore.
