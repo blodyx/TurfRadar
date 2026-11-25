@@ -1,5 +1,6 @@
-import os
+from datetime import datetime, timedelta
 
+import os
 import httpx
 import psycopg
 import time
@@ -122,6 +123,31 @@ def upsert_zone(cur, event):
     )
 
 
+def get_last_takeover_time(cur):
+    cur.execute(
+        "SELECT value FROM system_state WHERE key = 'last_takeover_time'"
+    )
+    row = cur.fetchone()
+
+    if not row:
+        return None
+
+    return datetime.fromisoformat(row[0])
+
+
+def save_last_takeover_time(cur, event_time):
+    cur.execute(
+        """
+        INSERT INTO system_state (key, value, updated_at)
+        VALUES ('last_takeover_time', %s, NOW())
+        ON CONFLICT (key)
+        DO UPDATE SET
+            value = EXCLUDED.value,
+            updated_at = NOW()
+        """,
+        (event_time,),
+    )
+
 def main():
     response = httpx.get(TAKEOVER_URL, timeout=30.0)
     response.raise_for_status()
@@ -135,6 +161,58 @@ def main():
                 upsert_zone(cur, event)
 
     print(f"Upserted {len(events)} takeover events", flush=True)
+
+def main():
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            last_time = get_last_takeover_time(cur)
+
+            params = {}
+
+            if last_time:
+                after_time = last_time - timedelta(minutes=2)
+
+                params["afterDate"] = after_time.strftime(
+                    "%Y-%m-%dT%H:%M:%S+0000"
+                )
+
+            response = httpx.get(
+                TAKEOVER_URL,
+                params=params,
+                timeout=30.0,
+            )
+            response.raise_for_status()
+
+            events = response.json()
+
+            print(
+                f"Received {len(events)} takeover events "
+                f"after {params.get('afterDate', 'initial feed')}",
+                flush=True,
+            )
+
+            newest_time = last_time
+
+            for event in events:
+                upsert_zone(cur, event)
+
+                event_time = datetime.fromisoformat(
+                    event["time"]
+                )
+
+                if newest_time is None or event_time > newest_time:
+                    newest_time = event_time
+
+            if newest_time:
+                save_last_takeover_time(
+                    cur,
+                    newest_time.isoformat()
+                )
+
+    print(
+        f"Upserted {len(events)} takeover events",
+        flush=True,
+    )
 
 if __name__ == "__main__":
     while True:
