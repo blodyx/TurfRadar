@@ -2,6 +2,7 @@ import os
 
 import httpx
 import psycopg
+import time
 
 
 TAKEOVER_URL = "https://api.turfgame.com/v6/feeds/takeover"
@@ -126,15 +127,20 @@ def main():
     response.raise_for_status()
     events = response.json()
 
-    print(f"Received {len(events)} takeover events")
+    print(f"Received {len(events)} takeover events", flush=True)
 
     with get_connection() as conn:
         with conn.cursor() as cur:
             for event in events:
                 upsert_zone(cur, event)
 
-    print(f"Upserted {len(events)} takeover events")
-
+    print(f"Upserted {len(events)} takeover events", flush=True)
 
 if __name__ == "__main__":
-    main()
+    while True:
+        try:
+            main()
+        except Exception as exc:
+            print(f"Worker error: {exc}", flush=True)
+
+        time.sleep(60)
