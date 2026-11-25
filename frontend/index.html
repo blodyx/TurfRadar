@@ -7,6 +7,17 @@
 
     <title>TurfRadar</title>
 
+<link rel="manifest" href="/turfradar/manifest.webmanifest">
+
+<link
+    rel="apple-touch-icon"
+    href="/turfradar/icons/apple-touch-icon.png"
+>
+
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="TurfRadar">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
     <style>
         :root {
             color-scheme: dark;
@@ -446,6 +457,15 @@ refreshNow.addEventListener("click", () => {
 
 loadRadar();
 configureAutoRefresh();
+</script>
+<script>
+if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+        navigator.serviceWorker.register(
+            "/turfradar/service-worker.js"
+        );
+    });
+}
 </script>
 </body>
 </html>

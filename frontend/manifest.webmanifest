@@ -1,0 +1,22 @@
+{
+  "name": "TurfRadar",
+  "short_name": "TurfRadar",
+  "description": "Radar för intressanta Turf-zoner i närheten.",
+  "start_url": "/turfradar/",
+  "scope": "/turfradar/",
+  "display": "standalone",
+  "background_color": "#07111f",
+  "theme_color": "#07111f",
+  "icons": [
+    {
+      "src": "/turfradar/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/turfradar/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

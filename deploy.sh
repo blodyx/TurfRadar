@@ -13,10 +13,16 @@ echo "2/4 Build and start services"
 docker compose up -d --build
 
 echo "3/4 Deploy frontend"
-install \
-  -m 0644 \
-  frontend/index.html \
-  /var/www/turfradar/index.html
+
+mkdir -p /var/www/turfradar
+
+cp -a frontend/. /var/www/turfradar/
+
+find /var/www/turfradar \
+  -type d -exec chmod 755 {} \;
+
+find /var/www/turfradar \
+  -type f -exec chmod 644 {} \;
 
 echo "4/4 Service status"
 docker compose ps
