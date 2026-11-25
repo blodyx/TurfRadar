@@ -78,6 +78,9 @@ services:
       POSTGRES_HOST: db
     ports:
       - "127.0.0.1:8000:8000"
+    volumes:
+      - ./secrets/vapid_private.pem:/run/secrets/vapid_private.pem:ro
+      - ./secrets/vapid_public.pem:/run/secrets/vapid_public.pem:ro
 
 volumes:
   turfradar_db:

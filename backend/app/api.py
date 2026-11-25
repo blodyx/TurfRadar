@@ -4,7 +4,9 @@ import psycopg
 from fastapi import FastAPI, HTTPException
 from psycopg.rows import dict_row
 from pydantic import BaseModel
+import base64
 
+from cryptography.hazmat.primitives import serialization
 
 app = FastAPI(
     title="TurfRadar",
@@ -19,10 +21,39 @@ ALLOWED_RADII = {
     5000,
 }
 
+VAPID_PUBLIC_KEY_PATH = "/run/secrets/vapid_public.pem"
+
+
+def get_vapid_public_key():
+    with open(VAPID_PUBLIC_KEY_PATH, "rb") as key_file:
+        public_key = serialization.load_pem_public_key(
+            key_file.read()
+        )
+
+    raw_key = public_key.public_bytes(
+        encoding=serialization.Encoding.X962,
+        format=serialization.PublicFormat.UncompressedPoint,
+    )
+
+    return (
+        base64.urlsafe_b64encode(raw_key)
+        .rstrip(b"=")
+        .decode("ascii")
+    )
+
 
 class RadarSettings(BaseModel):
     radiusM: int | None = None
     radarEnabled: bool | None = None
+
+class PushKeys(BaseModel):
+    p256dh: str
+    auth: str
+
+
+class PushSubscription(BaseModel):
+    endpoint: str
+    keys: PushKeys
 
 
 def get_connection():
@@ -34,6 +65,71 @@ def get_connection():
         row_factory=dict_row,
     )
 
+@app.post("/api/push/subscribe")
+def push_subscribe(
+    subscription: PushSubscription,
+    turf_user_id: int = 28449,
+):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id
+                FROM users
+                WHERE turf_user_id = %s
+                """,
+                (turf_user_id,),
+            )
+
+            user = cur.fetchone()
+
+            if not user:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Radar user not found",
+                )
+
+            cur.execute(
+                """
+                INSERT INTO push_subscriptions (
+                    user_id,
+                    endpoint,
+                    p256dh,
+                    auth,
+                    updated_at
+                )
+                VALUES (
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    NOW()
+                )
+                ON CONFLICT (endpoint)
+                DO UPDATE SET
+                    user_id = EXCLUDED.user_id,
+                    p256dh = EXCLUDED.p256dh,
+                    auth = EXCLUDED.auth,
+                    updated_at = NOW()
+                """,
+                (
+                    user["id"],
+                    subscription.endpoint,
+                    subscription.keys.p256dh,
+                    subscription.keys.auth,
+                ),
+            )
+
+    return {
+        "status": "subscribed",
+    }
+
+
+@app.get("/api/push/public-key")
+def push_public_key():
+    return {
+        "publicKey": get_vapid_public_key()
+    }
 
 @app.get("/api/health")
 def health():

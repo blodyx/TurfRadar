@@ -2,3 +2,4 @@ httpx
 psycopg[binary]
 fastapi
 uvicorn[standard]
+pywebpush

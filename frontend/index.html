@@ -241,6 +241,13 @@
     <button id="refresh-now" class="refresh-button">
         Uppdatera nu
     </button>
+    <button id="enable-push" class="refresh-button">
+    🔔 Aktivera notiser
+</button>
+
+<div class="last-refresh" id="push-status">
+    Notiser är inte aktiverade
+</div>
 
     <div class="last-refresh">
         Dashboard uppdaterad:
@@ -358,6 +365,23 @@ async function loadRadar() {
         `;
     }
 }
+
+function urlBase64ToUint8Array(base64String) {
+    const padding =
+        "=".repeat((4 - base64String.length % 4) % 4);
+
+    const base64 =
+        (base64String + padding)
+            .replace(/-/g, "+")
+            .replace(/_/g, "/");
+
+    const rawData = window.atob(base64);
+
+    return Uint8Array.from(
+        [...rawData].map(char => char.charCodeAt(0))
+    );
+}
+
 function updateRadiusButtons(radiusM) {
     document
         .querySelectorAll("[data-radius]")
@@ -393,6 +417,92 @@ document
     });
 const autoRefresh = document.getElementById("auto-refresh");
 const refreshNow = document.getElementById("refresh-now");
+
+const enablePush =
+    document.getElementById("enable-push");
+
+const pushStatus =
+    document.getElementById("push-status");
+
+
+enablePush.addEventListener("click", async () => {
+    try {
+        pushStatus.textContent =
+            "Aktiverar notiser...";
+
+        const permission =
+            await Notification.requestPermission();
+
+        if (permission !== "granted") {
+            pushStatus.textContent =
+                "Notiser tilläts inte";
+            return;
+        }
+
+        const registration =
+            await navigator.serviceWorker.ready;
+
+        const keyResponse = await fetch(
+            "/turfradar/api/push/public-key"
+        );
+
+        if (!keyResponse.ok) {
+            throw new Error(
+                "Could not fetch VAPID public key"
+            );
+        }
+
+        const keyData =
+            await keyResponse.json();
+
+        let subscription =
+            await registration.pushManager.getSubscription();
+
+        if (!subscription) {
+            subscription =
+                await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey:
+                        urlBase64ToUint8Array(
+                            keyData.publicKey
+                        )
+                });
+        }
+
+        const subscribeResponse = await fetch(
+            "/turfradar/api/push/subscribe",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(
+                    subscription.toJSON()
+                )
+            }
+        );
+
+        if (!subscribeResponse.ok) {
+            throw new Error(
+                "Could not save push subscription"
+            );
+        }
+
+        pushStatus.textContent =
+            "🔔 Notiser aktiverade";
+
+        enablePush.textContent =
+            "Notiser aktiverade";
+
+        enablePush.disabled = true;
+
+    } catch (error) {
+        console.error(error);
+
+        pushStatus.textContent =
+            "Kunde inte aktivera notiser";
+    }
+});
 
 let refreshTimer = null;
 
