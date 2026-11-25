@@ -122,6 +122,78 @@ def upsert_zone(cur, event):
         },
     )
 
+def record_taken_player(cur, event):
+    zone = event["zone"]
+
+    current_owner = (
+        zone.get("currentOwner")
+        or event.get("currentOwner")
+    )
+
+    previous_owner = zone.get("previousOwner")
+
+    if not current_owner or not previous_owner:
+        return
+
+    # Samma owner på båda sidor ska inte registreras
+    # som en take från en annan spelare.
+    if current_owner["id"] == previous_owner["id"]:
+        return
+
+    cur.execute(
+        """
+        SELECT id
+        FROM users
+        WHERE turf_user_id = %s
+        """,
+        (current_owner["id"],),
+    )
+
+    user = cur.fetchone()
+
+    if not user:
+        return
+
+    user_id = user[0]
+
+
+    cur.execute(
+        """
+        INSERT INTO user_taken_players (
+            user_id,
+            opponent_turf_id,
+            opponent_name,
+            first_observed_at,
+            last_observed_at,
+            observed_take_count
+        )
+        VALUES (
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            1
+        )
+        ON CONFLICT (
+            user_id,
+            opponent_turf_id
+        )
+        DO UPDATE SET
+            opponent_name = EXCLUDED.opponent_name,
+            last_observed_at = EXCLUDED.last_observed_at,
+            observed_take_count =
+                user_taken_players.observed_take_count + 1
+        """,
+        (
+            user_id,
+            previous_owner["id"],
+            previous_owner["name"],
+            event["time"],
+            event["time"],
+        ),
+    )
+
 
 def get_last_takeover_time(cur):
     cur.execute(
@@ -148,19 +220,19 @@ def save_last_takeover_time(cur, event_time):
         (event_time,),
     )
 
-def main():
-    response = httpx.get(TAKEOVER_URL, timeout=30.0)
-    response.raise_for_status()
-    events = response.json()
-
-    print(f"Received {len(events)} takeover events", flush=True)
-
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            for event in events:
-                upsert_zone(cur, event)
-
-    print(f"Upserted {len(events)} takeover events", flush=True)
+#def main():
+#    response = httpx.get(TAKEOVER_URL, timeout=30.0)
+#    response.raise_for_status()
+#    events = response.json()
+#
+#    print(f"Received {len(events)} takeover events", flush=True)
+#
+#    with get_connection() as conn:
+##        with conn.cursor() as cur:
+#            for event in events:
+#                upsert_zone(cur, event)
+#
+#    print(f"Upserted {len(events)} takeover events", flush=True)
 
 def main():
     with get_connection() as conn:
@@ -195,6 +267,7 @@ def main():
 
             for event in events:
                 upsert_zone(cur, event)
+                record_taken_player(cur, event)
 
                 event_time = datetime.fromisoformat(
                     event["time"]

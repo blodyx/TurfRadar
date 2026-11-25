@@ -1,3 +1,4 @@
+
 import os
 import time
 
@@ -35,9 +36,24 @@ def scan_user(cur, user):
                     z.location,
                     u.location
                 )
-            )::INTEGER AS distance_m
+            )::INTEGER AS distance_m,
+
+            CASE
+                WHEN z.current_owner_id IS NULL THEN FALSE
+                WHEN z.current_owner_id = u.turf_user_id THEN FALSE
+                WHEN utp.opponent_turf_id IS NOT NULL THEN FALSE
+                ELSE TRUE
+            END AS unique_player
+
         FROM zones z
-        JOIN users u ON u.id = %s
+
+        JOIN users u
+            ON u.id = %s
+
+        LEFT JOIN user_taken_players utp
+            ON utp.user_id = u.id
+            AND utp.opponent_turf_id = z.current_owner_id
+
         WHERE
             u.location IS NOT NULL
             AND ST_DWithin(
@@ -45,6 +61,7 @@ def scan_user(cur, user):
                 u.location,
                 u.radius_m
             )
+
         ORDER BY distance_m
         """,
         (user_id,),
@@ -52,20 +69,20 @@ def scan_user(cur, user):
 
     zones = cur.fetchall()
 
-    owned_zones = [
+    unique_players = [
         zone
         for zone in zones
-        if zone[2] is not None
+        if zone[7]
     ]
 
     print(
         f"Radar {turf_name}: "
         f"{len(zones)} zones within {radius_m} m, "
-        f"{len(owned_zones)} currently owned",
+        f"{len(unique_players)} unique-player opportunities",
         flush=True,
     )
 
-    for zone in owned_zones[:10]:
+    for zone in unique_players[:20]:
         (
             zone_id,
             zone_name,
@@ -74,10 +91,12 @@ def scan_user(cur, user):
             region_id,
             region_name,
             distance_m,
+            unique_player,
         ) = zone
 
         print(
-            f"  {distance_m:4d} m | "
+            f"  UNIQUE | "
+            f"{distance_m:4d} m | "
             f"{zone_name} | "
             f"{owner_name} ({owner_id})",
             flush=True,
