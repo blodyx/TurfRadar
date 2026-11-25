@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="sv">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="theme-color" content="#07111f">
+
+    <title>TurfRadar</title>
+
+    <style>
+        :root {
+            color-scheme: dark;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont,
+                "Segoe UI", sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: #07111f;
+            color: #eef6ff;
+        }
+
+        main {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 22px 16px 60px;
+        }
+
+        header {
+            margin-bottom: 24px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 32px;
+        }
+
+        .subtitle {
+            margin-top: 6px;
+            color: #8ea5bb;
+        }
+
+        .card {
+            background: #101d2c;
+            border: 1px solid #1e3349;
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 14px;
+        }
+
+        .user {
+            font-size: 22px;
+            font-weight: 700;
+        }
+
+        .meta {
+            color: #9bb0c4;
+            margin-top: 6px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .stat {
+            background: #0b1724;
+            border-radius: 12px;
+            padding: 14px;
+        }
+
+        .stat strong {
+            display: block;
+            font-size: 26px;
+            color: #62d7ff;
+        }
+
+        h2 {
+            margin-top: 28px;
+            margin-bottom: 12px;
+            font-size: 20px;
+        }
+
+        .zone {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .zone-name {
+            font-weight: 700;
+            font-size: 17px;
+        }
+
+        .owner {
+            color: #a9bdd0;
+            margin-top: 3px;
+        }
+
+        .neutral {
+            color: #ffd166;
+        }
+
+        .distance {
+            font-weight: 700;
+            color: #62d7ff;
+            white-space: nowrap;
+        }
+
+        .error {
+            color: #ff8585;
+	}
+
+	.settings-label {
+    	    font-weight: 700;
+    	    margin-bottom: 10px;
+	}
+
+	.radius-buttons {
+    	    display: grid;
+    	    grid-template-columns: repeat(4, 1fr);
+    	    gap: 8px;
+	}
+
+	.radius-buttons button {
+    	    border: 1px solid #29445d;
+    	    border-radius: 10px;
+    	    padding: 11px 6px;
+    	    background: #0b1724;
+    	    color: #eef6ff;
+    	    font: inherit;
+	}
+
+	.radius-buttons button.active {
+    	    background: #147ea8;
+    	    border-color: #62d7ff;
+	}
+	    
+    </style>
+</head>
+
+<body>
+<main>
+    <header>
+        <h1>📡 TurfRadar</h1>
+        <div class="subtitle">Vad finns runt dig just nu?</div>
+    </header>
+
+    <section class="card" id="profile">
+        Laddar radar...
+    </section>
+    <section class="card">
+    <div class="settings-label">Radie</div>
+
+    <div class="radius-buttons">
+        <button data-radius="500">500 m</button>
+        <button data-radius="1000">1 km</button>
+        <button data-radius="2000">2 km</button>
+        <button data-radius="5000">5 km</button>
+    </div>
+    </section>
+
+
+    <section class="stats">
+        <div class="stat">
+            <strong id="zone-count">–</strong>
+            zoner inom radien
+        </div>
+
+        <div class="stat">
+            <strong id="owned-count">–</strong>
+            med känd ägare
+        </div>
+    </section>
+
+    <h2>Närmast</h2>
+
+    <section id="zones"></section>
+</main>
+
+<script>
+function formatAge(seconds) {
+    if (seconds < 60) {
+        return `${seconds} sek sedan`;
+    }
+
+    const minutes = Math.floor(seconds / 60);
+
+    if (minutes < 60) {
+        return `${minutes} min sedan`;
+    }
+
+    const hours = Math.floor(minutes / 60);
+    const remaining = minutes % 60;
+
+    return `${hours} h ${remaining} min sedan`;
+}
+
+async function loadRadar() {
+    const profile = document.getElementById("profile");
+
+    try {
+        const response = await fetch("/turfradar/api/radar");
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+
+	updateRadiusButtons(data.user.radiusM);    
+
+        profile.innerHTML = `
+            <div class="user">${data.user.name}</div>
+            <div class="meta">
+                📍 Senaste position:
+                ${formatAge(data.user.positionAgeSeconds)}
+            </div>
+            <div class="meta">
+                🎯 Radie:
+                ${(data.user.radiusM / 1000).toFixed(1)} km
+            </div>
+        `;
+
+        document.getElementById("zone-count").textContent =
+            data.summary.zones;
+
+        document.getElementById("owned-count").textContent =
+            data.summary.ownedZones;
+
+        const zones = document.getElementById("zones");
+        zones.innerHTML = "";
+
+        for (const zone of data.zones) {
+            const card = document.createElement("div");
+            card.className = "card zone";
+
+            const owner = zone.current_owner_name
+                ? zone.current_owner_name
+                : "Neutral";
+
+            const ownerClass = zone.current_owner_name
+                ? "owner"
+                : "owner neutral";
+
+            card.innerHTML = `
+                <div>
+                    <div class="zone-name">${zone.name}</div>
+                    <div class="${ownerClass}">
+                        ${owner}
+                    </div>
+                </div>
+
+                <div class="distance">
+                    ${zone.distance_m} m
+                </div>
+            `;
+
+            zones.appendChild(card);
+        }
+    } catch (error) {
+        profile.innerHTML = `
+            <div class="error">
+                Kunde inte läsa TurfRadar API.
+            </div>
+        `;
+    }
+}
+function updateRadiusButtons(radiusM) {
+    document
+        .querySelectorAll("[data-radius]")
+        .forEach(button => {
+            button.classList.toggle(
+                "active",
+                Number(button.dataset.radius) === radiusM
+            );
+        });
+}
+
+document
+    .querySelectorAll("[data-radius]")
+    .forEach(button => {
+        button.addEventListener("click", async () => {
+            const radiusM = Number(button.dataset.radius);
+
+            const response = await fetch(
+                "/turfradar/api/settings",
+                {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ radiusM })
+                }
+            );
+
+            if (response.ok) {
+                await loadRadar();
+            }
+        });
+    });
+loadRadar();
+</script>
+</body>
+</html>
