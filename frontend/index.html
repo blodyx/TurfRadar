@@ -2,605 +2,91 @@
 <html lang="sv">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#07111f">
-
+    <meta name="description" content="TurfRadar visar Turf-möjligheter runt din senaste position.">
     <title>TurfRadar</title>
-
-<link rel="manifest" href="/turfradar/manifest.webmanifest">
-
-<link
-    rel="apple-touch-icon"
-    href="/turfradar/icons/apple-touch-icon.png"
->
-
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="TurfRadar">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-
-    <style>
-        :root {
-            color-scheme: dark;
-            font-family: system-ui, -apple-system, BlinkMacSystemFont,
-                "Segoe UI", sans-serif;
-        }
-
-        * {
-            box-sizing: border-box;
-        }
-	.brand {
-    	    display: flex;
-    	    align-items: center;
-    	    gap: 14px;
-   	    margin-bottom: 24px;
-	}	
-
-	.brand-logo {
-    	    width: 64px;
-            height: 64px;
-    	    border-radius: 16px;
-    	    flex-shrink: 0;
-	}
-
-	.brand h1 {
-    	    margin: 0;
-	}
-
-        body {
-            margin: 0;
-            background: #07111f;
-            color: #eef6ff;
-        }
-
-        main {
-            max-width: 720px;
-            margin: 0 auto;
-            padding: 22px 16px 60px;
-        }
-
-        header {
-            margin-bottom: 24px;
-        }
-
-        h1 {
-            margin: 0;
-            font-size: 32px;
-        }
-
-        .subtitle {
-            margin-top: 6px;
-            color: #8ea5bb;
-        }
-
-        .card {
-            background: #101d2c;
-            border: 1px solid #1e3349;
-            border-radius: 16px;
-            padding: 16px;
-            margin-bottom: 14px;
-        }
-
-        .user {
-            font-size: 22px;
-            font-weight: 700;
-        }
-
-        .meta {
-            color: #9bb0c4;
-            margin-top: 6px;
-        }
-
-        .stats {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-        }
-
-        .stat {
-            background: #0b1724;
-            border-radius: 12px;
-            padding: 14px;
-        }
-
-        .stat strong {
-            display: block;
-            font-size: 26px;
-            color: #62d7ff;
-        }
-
-        h2 {
-            margin-top: 28px;
-            margin-bottom: 12px;
-            font-size: 20px;
-        }
-
-        .zone {
-            display: grid;
-            grid-template-columns: 1fr auto;
-            gap: 8px;
-            align-items: center;
-        }
-
-        .zone-name {
-            font-weight: 700;
-            font-size: 17px;
-        }
-
-        .owner {
-            color: #a9bdd0;
-            margin-top: 3px;
-        }
-
-        .neutral {
-            color: #ffd166;
-        }
-
-        .distance {
-            font-weight: 700;
-            color: #62d7ff;
-            white-space: nowrap;
-        }
-
-        .error {
-            color: #ff8585;
-	}
-
-	.settings-label {
-    	    font-weight: 700;
-    	    margin-bottom: 10px;
-	}
-
-	.radius-buttons {
-    	    display: grid;
-    	    grid-template-columns: repeat(4, 1fr);
-    	    gap: 8px;
-	}
-
-	.radius-buttons button {
-    	    border: 1px solid #29445d;
-    	    border-radius: 10px;
-    	    padding: 11px 6px;
-    	    background: #0b1724;
-    	    color: #eef6ff;
-    	    font: inherit;
-	}
-
-	.radius-buttons button.active {
-    	    background: #147ea8;
-    	    border-color: #62d7ff;
-	}
-	    
-	.controls {
-    display: grid;
-    gap: 14px;
-}
-
-.toggle-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 20px;
-}
-
-.toggle-row span {
-    display: grid;
-    gap: 3px;
-}
-
-.toggle-row small {
-    color: #8ea5bb;
-}
-
-.toggle-row input {
-    width: 24px;
-    height: 24px;
-    accent-color: #38bdf8;
-}
-
-.refresh-button {
-    border: 1px solid #29445d;
-    border-radius: 10px;
-    padding: 12px;
-    background: #0b1724;
-    color: #eef6ff;
-    font: inherit;
-    font-weight: 700;
-}
-
-.refresh-button:active {
-    background: #162a3e;
-}
-
-.last-refresh {
-    color: #7f95a8;
-    font-size: 13px;
-}
-    </style>
+    <link rel="manifest" href="/turfradar/manifest.webmanifest">
+    <link rel="stylesheet" href="/turfradar/styles.css">
+    <link rel="apple-touch-icon" href="/turfradar/icons/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="TurfRadar">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
-
 <body>
-<main>
+<main class="app-shell">
     <header class="brand">
-    	<img
-            src="/turfradar/icons/icon-192.png"
-            alt="TurfRadar"
-            class="brand-logo"
-    	>
-
-    <div>
-        <h1>TurfRadar</h1>
-        <div class="subtitle">Vad finns runt dig just nu?</div>
-    </div>
+        <img src="/turfradar/icons/icon-192.png" alt="" class="brand-logo" width="64" height="64">
+        <div>
+            <h1>TurfRadar</h1>
+            <p class="subtitle">Vad finns runt dig just nu?</p>
+        </div>
     </header>
 
-    <section class="card" id="profile">
-        Laddar radar...
+    <section id="notice" class="notice" hidden aria-live="polite"></section>
+
+    <section id="auth-card" class="card auth-card" hidden>
+        <h2>Logga in på TurfRadar</h2>
+        <p class="auth-copy">Ange e-postadressen som är kopplad till ditt Turf-konto. Vi skickar en engångslänk för verifiering.</p>
+        <form id="auth-form" class="auth-form">
+            <label for="auth-email">E-post</label>
+            <input id="auth-email" name="email" type="email" autocomplete="email" required placeholder="du@example.com">
+            <button type="submit" class="action-button" id="auth-submit">Skicka verifieringslänk</button>
+        </form>
+        <p id="auth-status" class="status-text" aria-live="polite"></p>
     </section>
-    <section class="card">
-    <div class="settings-label">Radie</div>
 
-    <div class="radius-buttons">
-        <button data-radius="500">500 m</button>
-        <button data-radius="1000">1 km</button>
-        <button data-radius="2000">2 km</button>
-        <button data-radius="5000">5 km</button>
-    </div>
-    </section>
+    <div id="radar-app" hidden>
+        <section class="card" id="profile" aria-live="polite">
+            <div class="loading">Laddar radar...</div>
+        </section>
 
-    <section class="card controls">
-    <label class="toggle-row">
-    <span>
-        <strong>Radar</strong>
-        <small>Bevakning och framtida notiser</small>
-    </span>
+        <section class="stats" aria-label="Radarsammanfattning">
+            <div class="stat"><strong id="zone-count">-</strong><span>zoner inom radien</span></div>
+            <div class="stat"><strong id="owned-count">-</strong><span>med känd ägare</span></div>
+        </section>
 
-    <input type="checkbox" id="radar-enabled">
-        <span>
-            <strong>Auto-refresh</strong>
-            <small>Uppdatera sidan var 30:e sekund</small>
-        </span>
-
-        <input type="checkbox" id="auto-refresh" checked>
-    </label>
-
-    <button id="refresh-now" class="refresh-button">
-        Uppdatera nu
-    </button>
-    <button id="enable-push" class="refresh-button">
-    🔔 Aktivera notiser
-</button>
-
-<div class="last-refresh" id="push-status">
-    Notiser är inte aktiverade
-</div>
-
-    <div class="last-refresh">
-        Dashboard uppdaterad:
-        <span id="last-refresh">–</span>
-    </div>
-</section>
-
-    <section class="stats">
-        <div class="stat">
-            <strong id="zone-count">–</strong>
-            zoner inom radien
+        <div class="settings-header">
+            <h2>Inställningar</h2>
+            <button type="button" id="toggle-settings" class="settings-toggle" aria-expanded="false" aria-controls="settings-panel">Visa inställningar</button>
         </div>
 
-        <div class="stat">
-            <strong id="owned-count">–</strong>
-            med känd ägare
+        <div id="settings-panel" hidden>
+            <section class="card" aria-labelledby="radius-heading">
+                <h3 id="radius-heading" class="settings-label">Radie</h3>
+                <div class="radius-buttons" role="group" aria-label="Välj radarradie">
+                    <button type="button" data-radius="500">500 m</button>
+                    <button type="button" data-radius="1000">1 km</button>
+                    <button type="button" data-radius="2000">2 km</button>
+                    <button type="button" data-radius="5000">5 km</button>
+                </div>
+            </section>
+
+            <section class="card controls" aria-label="Radarinställningar">
+                <label class="toggle-row" for="radar-enabled">
+                    <span><strong>Radar</strong><small>Bevakning och framtida notiser</small></span>
+                    <input type="checkbox" id="radar-enabled">
+                </label>
+                <label class="toggle-row" for="auto-refresh">
+                    <span><strong>Auto-refresh</strong><small>Uppdatera sidan var 30:e sekund</small></span>
+                    <input type="checkbox" id="auto-refresh" checked>
+                </label>
+                <div class="button-row">
+                    <button type="button" id="refresh-now" class="action-button">Uppdatera nu</button>
+                    <button type="button" id="enable-push" class="action-button">Aktivera notiser</button>
+                </div>
+                <p class="status-text" id="push-status" aria-live="polite">Notiser är inte aktiverade</p>
+                <p class="status-text">Dashboard uppdaterad: <span id="last-refresh">-</span></p>
+                <button type="button" id="logout" class="action-button logout-button">Logga ut</button>
+            </section>
         </div>
-    </section>
 
-    <h2>Närmast</h2>
-
-    <section id="zones"></section>
+        <section aria-labelledby="nearest-heading">
+            <h2 id="nearest-heading">Närmast</h2>
+            <div id="zones" class="zone-list" aria-live="polite"></div>
+        </section>
+    </div>
 </main>
-
-<script>
-function formatAge(seconds) {
-    if (seconds < 60) {
-        return `${seconds} sek sedan`;
-    }
-
-    const minutes = Math.floor(seconds / 60);
-
-    if (minutes < 60) {
-        return `${minutes} min sedan`;
-    }
-
-    const hours = Math.floor(minutes / 60);
-    const remaining = minutes % 60;
-
-    return `${hours} h ${remaining} min sedan`;
-}
-
-async function loadRadar() {
-    const profile = document.getElementById("profile");
-
-    try {
-        const response = await fetch("/turfradar/api/radar");
-
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-
-        const data = await response.json();
-
-	document.getElementById("radar-enabled").checked =
-    	    data.user.radarEnabled;
-	updateRadiusButtons(data.user.radiusM);    
-
-        profile.innerHTML = `
-            <div class="user">${data.user.name}</div>
-            <div class="meta">
-                📍 Senaste position:
-                ${formatAge(data.user.positionAgeSeconds)}
-            </div>
-            <div class="meta">
-                🎯 Radie:
-                ${(data.user.radiusM / 1000).toFixed(1)} km
-            </div>
-        `;
-
-        document.getElementById("zone-count").textContent =
-            data.summary.zones;
-
-        document.getElementById("owned-count").textContent =
-            data.summary.ownedZones;
-
-	document.getElementById("last-refresh").textContent =
-    	    new Date().toLocaleTimeString("sv-SE");
-
-        const zones = document.getElementById("zones");
-        zones.innerHTML = "";
-
-        for (const zone of data.zones) {
-            const card = document.createElement("div");
-            card.className = "card zone";
-
-            const owner = zone.current_owner_name
-                ? zone.current_owner_name
-                : "Neutral";
-
-            const ownerClass = zone.current_owner_name
-                ? "owner"
-                : "owner neutral";
-
-            card.innerHTML = `
-                <div>
-                    <div class="zone-name">${zone.name}</div>
-                    <div class="${ownerClass}">
-                        ${owner}
-                    </div>
-                </div>
-
-                <div class="distance">
-                    ${zone.distance_m} m
-                </div>
-            `;
-
-            zones.appendChild(card);
-        }
-    } catch (error) {
-        profile.innerHTML = `
-            <div class="error">
-                Kunde inte läsa TurfRadar API.
-            </div>
-        `;
-    }
-}
-
-function urlBase64ToUint8Array(base64String) {
-    const padding =
-        "=".repeat((4 - base64String.length % 4) % 4);
-
-    const base64 =
-        (base64String + padding)
-            .replace(/-/g, "+")
-            .replace(/_/g, "/");
-
-    const rawData = window.atob(base64);
-
-    return Uint8Array.from(
-        [...rawData].map(char => char.charCodeAt(0))
-    );
-}
-
-function updateRadiusButtons(radiusM) {
-    document
-        .querySelectorAll("[data-radius]")
-        .forEach(button => {
-            button.classList.toggle(
-                "active",
-                Number(button.dataset.radius) === radiusM
-            );
-        });
-}
-
-document
-    .querySelectorAll("[data-radius]")
-    .forEach(button => {
-        button.addEventListener("click", async () => {
-            const radiusM = Number(button.dataset.radius);
-
-            const response = await fetch(
-                "/turfradar/api/settings",
-                {
-                    method: "PATCH",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({ radiusM })
-                }
-            );
-
-            if (response.ok) {
-                await loadRadar();
-            }
-        });
-    });
-const autoRefresh = document.getElementById("auto-refresh");
-const refreshNow = document.getElementById("refresh-now");
-
-const enablePush =
-    document.getElementById("enable-push");
-
-const pushStatus =
-    document.getElementById("push-status");
-
-
-enablePush.addEventListener("click", async () => {
-    try {
-        pushStatus.textContent =
-            "Aktiverar notiser...";
-
-        const permission =
-            await Notification.requestPermission();
-
-        if (permission !== "granted") {
-            pushStatus.textContent =
-                "Notiser tilläts inte";
-            return;
-        }
-
-        const registration =
-            await navigator.serviceWorker.ready;
-
-        const keyResponse = await fetch(
-            "/turfradar/api/push/public-key"
-        );
-
-        if (!keyResponse.ok) {
-            throw new Error(
-                "Could not fetch VAPID public key"
-            );
-        }
-
-        const keyData =
-            await keyResponse.json();
-
-        let subscription =
-            await registration.pushManager.getSubscription();
-
-        if (!subscription) {
-            subscription =
-                await registration.pushManager.subscribe({
-                    userVisibleOnly: true,
-                    applicationServerKey:
-                        urlBase64ToUint8Array(
-                            keyData.publicKey
-                        )
-                });
-        }
-
-        const subscribeResponse = await fetch(
-            "/turfradar/api/push/subscribe",
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(
-                    subscription.toJSON()
-                )
-            }
-        );
-
-        if (!subscribeResponse.ok) {
-            throw new Error(
-                "Could not save push subscription"
-            );
-        }
-
-        pushStatus.textContent =
-            "🔔 Notiser aktiverade";
-
-        enablePush.textContent =
-            "Notiser aktiverade";
-
-        enablePush.disabled = true;
-
-    } catch (error) {
-        console.error(error);
-
-        pushStatus.textContent =
-            "Kunde inte aktivera notiser";
-    }
-});
-
-let refreshTimer = null;
-
-const savedAutoRefresh =
-    localStorage.getItem("turfradar-auto-refresh");
-
-const radarEnabled =
-    document.getElementById("radar-enabled");
-
-radarEnabled.addEventListener("change", async () => {
-    const response = await fetch(
-        "/turfradar/api/settings",
-        {
-            method: "PATCH",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                radarEnabled: radarEnabled.checked
-            })
-        }
-    );
-
-    if (!response.ok) {
-        radarEnabled.checked = !radarEnabled.checked;
-        return;
-    }
-
-    await loadRadar();
-});
-
-if (savedAutoRefresh !== null) {
-    autoRefresh.checked = savedAutoRefresh === "true";
-}
-
-function configureAutoRefresh() {
-    if (refreshTimer) {
-        clearInterval(refreshTimer);
-        refreshTimer = null;
-    }
-
-    if (autoRefresh.checked) {
-        refreshTimer = setInterval(
-            loadRadar,
-            30000
-        );
-    }
-}
-
-autoRefresh.addEventListener("change", () => {
-    localStorage.setItem(
-        "turfradar-auto-refresh",
-        autoRefresh.checked
-    );
-
-    configureAutoRefresh();
-});
-
-refreshNow.addEventListener("click", () => {
-    loadRadar();
-});
-
-loadRadar();
-configureAutoRefresh();
-</script>
-<script>
-if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-        navigator.serviceWorker.register(
-            "/turfradar/service-worker.js"
-        );
-    });
-}
-</script>
+<script src="/turfradar/app.js" defer></script>
 </body>
 </html>

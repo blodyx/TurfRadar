@@ -1,0 +1,58 @@
+:root { color-scheme: dark; font-family: system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; --background:#07111f; --surface:#101d2c; --surface-muted:#0b1724; --border:#1e3349; --border-strong:#29445d; --text:#eef6ff; --text-muted:#9bb0c4; --accent:#62d7ff; --accent-strong:#147ea8; --warning:#ffd166; --danger:#ff8585; --success:#75e6a4; }
+* { box-sizing:border-box; }
+[hidden] { display:none !important; }
+body { margin:0; min-width:320px; background:var(--background); color:var(--text); }
+button,input { font:inherit; }
+button { cursor:pointer; }
+button:disabled { cursor:default; opacity:.65; }
+button:focus-visible,input:focus-visible { outline:3px solid rgba(98,215,255,.45); outline-offset:3px; }
+.app-shell { width:min(100%,720px); margin:0 auto; padding:22px 16px 60px; }
+.brand { display:flex; align-items:center; gap:14px; margin-bottom:24px; }
+.brand-logo { width:64px; height:64px; border-radius:16px; flex:0 0 auto; }
+h1,h2,h3,p { margin-top:0; }
+h1 { margin-bottom:0; font-size:clamp(1.75rem,7vw,2rem); }
+h2 { margin:28px 0 12px; font-size:1.25rem; }
+.subtitle { margin:6px 0 0; color:#8ea5bb; }
+.card,.stat { background:var(--surface); border:1px solid var(--border); border-radius:16px; }
+.card { padding:16px; margin-bottom:14px; }
+.notice { margin-bottom:14px; padding:14px 16px; border:1px solid var(--border); border-radius:14px; background:var(--surface); }
+.notice.success { border-color:#287c50; color:var(--success); }
+.notice.error { border-color:#8b3c46; color:var(--danger); }
+.notice.info { border-color:var(--accent-strong); color:var(--accent); }
+.user { font-size:1.4rem; font-weight:750; }
+.meta { margin-top:6px; color:var(--text-muted); }
+.loading,.empty { color:var(--text-muted); }
+.error { color:var(--danger); }
+.stats { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.stat { padding:14px; background:var(--surface-muted); }
+.stat strong { display:block; font-size:1.65rem; color:var(--accent); }
+.stat span { color:var(--text-muted); }
+.settings-header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:22px 0 12px; }
+.settings-header h2 { margin:0; }
+.settings-toggle,.radius-buttons button,.action-button { min-height:44px; border:1px solid var(--border-strong); border-radius:10px; background:var(--surface-muted); color:var(--text); font-weight:700; }
+.settings-toggle { padding:8px 12px; }
+.settings-label { margin:0 0 10px; font-size:1rem; }
+.radius-buttons { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+.radius-buttons button { padding:10px 6px; }
+.radius-buttons button.active { background:var(--accent-strong); border-color:var(--accent); }
+.controls { display:grid; gap:16px; }
+.toggle-row { display:flex; align-items:center; justify-content:space-between; gap:20px; }
+.toggle-row span { display:grid; gap:3px; }
+.toggle-row small { color:#8ea5bb; }
+.toggle-row input { width:24px; height:24px; accent-color:#38bdf8; flex:0 0 auto; }
+.button-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.action-button { padding:12px; }
+.logout-button { margin-top:8px; border-color:#8b3c46; color:#ffb4b4; }
+.status-text { margin:0; color:#7f95a8; font-size:.85rem; }
+.zone-list { display:grid; gap:10px; }
+.zone { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:center; margin-bottom:0; }
+.zone-name { font-weight:750; font-size:1.05rem; overflow-wrap:anywhere; }
+.owner { margin-top:3px; color:#a9bdd0; }
+.owner.neutral { color:var(--warning); }
+.distance { color:var(--accent); font-weight:750; white-space:nowrap; }
+.auth-card h2 { margin-top:0; }
+.auth-copy { color:var(--text-muted); line-height:1.5; }
+.auth-form { display:grid; gap:10px; }
+.auth-form label { font-weight:700; }
+.auth-form input { min-height:46px; width:100%; border:1px solid var(--border-strong); border-radius:10px; padding:10px 12px; background:var(--surface-muted); color:var(--text); }
+@media (max-width:480px) { .radius-buttons { grid-template-columns:repeat(2,1fr); } .button-row { grid-template-columns:1fr; } }

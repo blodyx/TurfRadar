@@ -1,187 +1,60 @@
 # TurfRadar API Reference
 
-This document records the API behavior actually used/verified while building TurfRadar.
+Last updated: 2026-11-26
+
+This document records API behavior used or verified while building TurfRadar.
 
 ## Turf API v6 dependencies
 
-Production logic should use Turf API v6. Older Turf API versions are not production dependencies.
+Base URL: `https://api.turfgame.com/v6`
 
-Base URL:
+Production logic uses Turf API v6.
 
-```text
-https://api.turfgame.com/v6
-```
+### `GET /v6/zones/all`
 
-## Turf: all zones
+Full Turf zone bootstrap. Use compressed transfer. Stable Turf zone IDs are used as `zones.id`. The endpoint is rate-limited and should not be repeatedly fetched during development.
 
-```http
-GET /v6/zones/all
-```
+### `GET /v6/feeds/takeover`
 
-Purpose: full Turf zone world/bootstrap.
+Optional `afterDate` query. TurfRadar uses the latest processed timestamp minus two minutes for deliberate overlap. Zone state is upserted by stable Turf zone ID.
 
-Important request behavior:
+### `GET /v6/rounds`
 
-- Use compressed transfer (`Accept-Encoding: gzip`; curl `--compressed` works).
-- API allows only one request per 30 minutes.
-- Documentation states the list updates at least hourly.
+Used to identify the active round and detect real round transitions.
 
-Example response object observed:
+### `POST /v6/users`
+
+Supported/verified lookup forms include Turf ID and e-mail.
+
+ID example:
 
 ```json
-{
-  "dateCreated": "2026-04-22T22:00:00+0000",
-  "id": 786444,
-  "latitude": 60.399816,
-  "longitude": 5.339665,
-  "name": "Kakleklippen",
-  "pointsPerHour": 1,
-  "region": {
-    "area": {
-      "id": 3078,
-      "name": "Bergen"
-    },
-    "country": "no",
-    "id": 181,
-    "name": "Vestlandet"
-  },
-  "takeoverPoints": 185,
-  "totalTakeovers": 0
-}
+[{"id":28449}]
 ```
 
-The endpoint supplies stable Turf zone IDs and is the correct bulk source for TurfRadar.
-
-## Turf: takeover feed
-
-```http
-GET /v6/feeds/takeover
-```
-
-Optional query:
-
-```text
-afterDate=<URL-encoded timestamp>
-```
-
-Only posts newer than `afterDate` are returned.
-
-TurfRadar uses the latest processed timestamp minus two minutes to create deliberate overlap.
-
-Important response data includes:
-
-- event type/time
-- zone ID/name/coordinates
-- current owner ID/name
-- previous owner ID/name
-- region/area/country
-- zone type if present
-- points/statistics
-
-Owner state is UPSERTed by zone ID.
-
-## Turf: rounds
-
-```http
-GET /v6/rounds
-```
-
-Response includes monthly Turf round start timestamps.
-
-Example:
+E-mail example used by onboarding:
 
 ```json
-[
-  {
-    "name": "November",
-    "start": "2026-11-01T11:00:00+0000"
-  },
-  {
-    "name": "December",
-    "start": "2026-12-06T11:00:00+0000"
-  }
-]
+[{"email":"user@example.com"}]
 ```
 
-TurfRadar selects the latest round with `start <= now`.
+A valid e-mail lookup returns the normal Turf user profile including numeric `id` and `name`. An unknown e-mail returned `[]` during verification on 2026-11-26.
 
-## Turf: users
+Querying by Turf ID did not return an e-mail address during testing.
 
-```http
-POST /v6/users
-Content-Type: application/json
-```
+### `GET /v6/users/location`
 
-Lookup can use arrays such as:
+Returns currently visible Turf users with ID/name/latitude/longitude. TurfRadar records observation time locally and retains last-known position when a registered user is absent from the current feed.
 
-```json
-[
-  {"name": "blodyx"}
-]
-```
+## TurfRadar HTTP API
 
-or:
+Public prefix: `https://farstad.se/turfradar/api`
 
-```json
-[
-  {"id": 28449}
-]
-```
+Protected user endpoints use the `turfradar_session` cookie. The authenticated user must not be selected with a Turf ID query parameter.
 
-Verified response for `blodyx` contained:
+### Health
 
-- `id = 28449`
-- `name = blodyx`
-- `country = se`
-- region `127 / Västerbotten`
-- `uniqueZonesTaken = 2285`
-- `taken = 51310`
-- rank, points and total points
-- `zones`: zones currently owned in the active round
-- `medals`: medal occurrences, including repeated IDs
-
-Repeated medal IDs are meaningful and must not be automatically deduplicated.
-
-## Turf: current user locations
-
-```http
-GET /v6/users/location
-```
-
-Returns current players with a location visible on the Turf map.
-
-Observed shape:
-
-```json
-{
-  "latitude": 63.825998,
-  "longitude": 20.304683,
-  "name": "blodyx",
-  "id": 28449
-}
-```
-
-No source timestamp is provided in the observed data. TurfRadar records observation time locally.
-
-If a watched user is absent, TurfRadar keeps the previously known position.
-
----
-
-# TurfRadar HTTP API
-
-Public prefix through Caddy:
-
-```text
-https://farstad.se/turfradar/api
-```
-
-## Health
-
-```http
-GET /api/health
-```
-
-Example:
+`GET /api/health`
 
 ```json
 {
@@ -190,56 +63,150 @@ Example:
 }
 ```
 
-## Radar
+### Register / start login
 
-```http
-GET /api/radar?turf_user_id=28449
-```
+`POST /api/register`
 
-The user ID query currently defaults to the development user.
-
-Response shape:
+Request:
 
 ```json
 {
-  "user": {
-    "turfUserId": 28449,
-    "name": "blodyx",
-    "radiusM": 1000,
-    "radarEnabled": true,
-    "latitude": 63.825998,
-    "longitude": 20.304683,
-    "positionUpdatedAt": "...",
-    "positionAgeSeconds": 123
-  },
-  "summary": {
-    "zones": 42,
-    "ownedZones": 30
-  },
-  "zones": [
-    {
-      "id": 7704,
-      "name": "MountLily",
-      "current_owner_id": 414640,
-      "current_owner_name": "Nihilisten",
-      "region_id": 127,
-      "region_name": "Västerbotten",
-      "distance_m": 346
-    }
-  ]
+  "email": "user@example.com",
+  "challenge": "client-generated-random-challenge"
 }
 ```
 
-The API intentionally still returns dashboard information when `radarEnabled` is false. The flag controls active radar/notification behavior, not whether the UI may inspect state.
+Behavior:
 
-## Settings
+1. Looks up the e-mail through Turf `/v6/users`.
+2. Upserts the local user and auth identity.
+3. Hashes and stores the one-time verification token.
+4. Hashes and stores the PWA challenge.
+5. Sends a 15-minute magic link through Resend.
 
-```http
-PATCH /api/settings?turf_user_id=28449
-Content-Type: application/json
+Example success response:
+
+```json
+{
+  "status": "verification_sent",
+  "turfUserId": 28449,
+  "turfName": "blodyx"
+}
 ```
 
-Supported fields:
+The raw verification token is not returned by the production registration response.
+
+### Verify e-mail
+
+`GET /api/auth/verify?token=...`
+
+Behavior:
+
+- SHA-256 hashes the supplied token and matches `auth_tokens`.
+- Rejects missing, used or expired tokens.
+- Sets `user_auth.email_verified_at`.
+- Marks the verification token used.
+- Marks the pending unclaimed login challenge for that user verified.
+
+Success:
+
+```json
+{
+  "verified": true,
+  "turfUserId": 28449,
+  "turfName": "blodyx"
+}
+```
+
+A verification token is single-use. Reuse returns HTTP 410.
+
+### Claim verified login
+
+`POST /api/auth/claim`
+
+Request:
+
+```json
+{
+  "challenge": "same-client-generated-random-challenge"
+}
+```
+
+If the magic link has not been verified yet:
+
+```json
+{
+  "authenticated": false,
+  "status": "waiting_for_verification"
+}
+```
+
+After verification, a valid unclaimed challenge creates a 30-day session and sets cookie `turfradar_session` with `HttpOnly`, `Secure`, `SameSite=Lax`, path `/turfradar`.
+
+Success:
+
+```json
+{
+  "authenticated": true,
+  "turfUserId": 28449,
+  "turfName": "blodyx"
+}
+```
+
+Challenges are single-use and expire after 15 minutes.
+
+### Current user
+
+`GET /api/auth/me`
+
+Requires a valid session cookie.
+
+Example:
+
+```json
+{
+  "authenticated": true,
+  "turfUserId": 28449,
+  "turfName": "blodyx",
+  "email": "user@example.com"
+}
+```
+
+### Logout
+
+`POST /api/auth/logout`
+
+Deletes the current server session and removes the session cookie.
+
+```json
+{
+  "authenticated": false
+}
+```
+
+### Radar
+
+`GET /api/radar`
+
+Requires authentication. User identity comes from the session.
+
+Response contains:
+
+- authenticated user's Turf ID/name;
+- radius and radar-enabled state;
+- latest known position and position age;
+- count of nearby zones and known owners;
+- nearest zones with owner/region/distance metadata.
+
+The dashboard may inspect radar state even when `radarEnabled` is false. The flag controls active radar/notification behavior, not UI visibility or historical/profile collection.
+
+### Settings
+
+`PATCH /api/settings`
+
+Requires authentication. Changes only the authenticated user's row.
+
+Supported request fields:
 
 ```json
 {
@@ -255,43 +222,21 @@ Allowed V1 radii:
 - 2000 m
 - 5000 m
 
-Fields may be changed independently.
+Fields can be changed independently. Dashboard auto-refresh and settings-panel visibility are browser-local, not server settings.
 
-Example response:
+### Push public key
 
-```json
-{
-  "radiusM": 2000,
-  "radarEnabled": true
-}
-```
+`GET /api/push/public-key`
 
-Dashboard auto-refresh is not a server setting; it is stored locally in the browser/PWA.
+Returns the public VAPID application-server key. This value is public by design.
 
-## Push public key
+### Push subscribe
 
-```http
-GET /api/push/public-key
-```
+`POST /api/push/subscribe`
 
-Returns the public VAPID application server key in URL-safe Base64 format:
+Requires authentication. Subscription ownership is taken from the current session, not a Turf ID request parameter.
 
-```json
-{
-  "publicKey": "B..."
-}
-```
-
-This key is public by design.
-
-## Push subscribe
-
-```http
-POST /api/push/subscribe?turf_user_id=28449
-Content-Type: application/json
-```
-
-Request matches a browser PushSubscription JSON object:
+Request is a browser `PushSubscription` JSON object:
 
 ```json
 {
@@ -303,22 +248,8 @@ Request matches a browser PushSubscription JSON object:
 }
 ```
 
-Subscription is UPSERTed by endpoint and associated with the TurfRadar user.
+Subscriptions are upserted by endpoint and associated with the authenticated local user.
 
-Response:
+### Push test helper
 
-```json
-{
-  "status": "subscribed"
-}
-```
-
-## Push test helper
-
-A development-only/manual Python module exists to send a Web Push test from inside the API container.
-
-```bash
-docker compose exec api python -m app.push_test
-```
-
-Do not expose this as an unauthenticated public HTTP endpoint.
+The development-only Python helper can send a manual Web Push from inside the container. It must not be exposed as an unauthenticated public HTTP endpoint.

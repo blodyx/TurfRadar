@@ -1,159 +1,180 @@
-# TurfRadar - Session update 2026-11-25
+# TurfRadar - Session update 2026-11-26
 
-This note captures the changes made after the main documentation checkpoint.
+## Summary
 
-## New: observed take history / unikaturfare state
+This session converted TurfRadar's central HTTP user flow from a hard-coded development user into real self-service multi-user authentication suitable for the iPhone PWA.
 
-A new table was added:
+The main result is verified end-to-end login/logout/re-login on iPhone:
 
-`user_taken_players`
+```text
+PWA -> Turf e-mail lookup -> Resend magic link -> verification
+    -> PWA challenge claim -> session cookie -> authenticated radar
+```
 
-Purpose: maintain the set of Turf players a registered TurfRadar user has been observed taking a zone from.
+## Turf e-mail lookup verified
 
-Important fields:
+`POST https://api.turfgame.com/v6/users` was tested using an e-mail lookup.
 
-- `user_id` - local TurfRadar user
-- `opponent_turf_id` - Turf ID of the previous zone owner
-- `opponent_name`
-- `first_observed_at`
-- `last_observed_at`
-- `observed_take_count`
+A valid address associated with Turf user `blodyx` returned the normal Turf profile including Turf ID `28449` and name `blodyx`.
 
-Primary identity is `(user_id, opponent_turf_id)`.
+An unknown test address returned `[]`.
 
-`observed_take_count` means only takes observed by TurfRadar. It is not claimed to be the player's complete historical number of takes.
+A separate lookup by Turf ID confirmed that the v6 response does not expose the user's e-mail address. Registration therefore starts with an e-mail address supplied by the user rather than trying to discover one from a public Turf profile.
 
-### Takeover integration
+## Authentication database migrations
 
-`takeover_worker.py` now inspects each takeover event after updating the zone.
+Three migrations were added after migration 008:
 
-When:
+### `009_create_user_auth.sql`
 
-- `currentOwner` belongs to a registered TurfRadar user,
-- `previousOwner` exists, and
-- current and previous owner IDs are different,
+Creates:
 
-TurfRadar UPSERTs the previous owner into `user_taken_players`.
+- `user_auth`
+- `auth_tokens`
 
-This collection is independent of `radar_enabled`. Turning radar notifications off must not stop history collection.
+`user_auth` links a local TurfRadar user to the submitted e-mail address and stores `email_verified_at`.
 
-A bug was found immediately after adding this: the default psycopg cursor returns tuples, but the first implementation attempted `user["id"]`. It was fixed to use `user[0]`. The transaction/checkpoint design prevented the failed batch from being silently skipped.
+`auth_tokens` stores only the SHA-256 hash of short-lived one-time verification tokens.
 
-## Verified live take-history behavior
+### `010_create_user_sessions.sql`
 
-Temporary test user:
+Creates `user_sessions` with:
 
-- Turf name: `H3nkm4n`
-- Turf ID: `438929`
+- `user_id`
+- hashed session token
+- expiry
+- created timestamp
+- last-seen timestamp
 
-TurfRadar followed the user through `/v6/users/location` while the player was actively moving.
+Current session lifetime is 30 days.
 
-Observed examples written automatically to `user_taken_players`:
+### `011_create_auth_challenges.sql`
 
-| Opponent Turf ID | Name | Observed takes |
-|---:|---|---:|
-| 448488 | Tomte-nisse | 1 |
-| 327467 | Ocho | 2 |
-| 136818 | foxxy | 1 |
+Creates `auth_challenges` with:
 
-The `Ocho` result verified that repeated takes update the existing opponent record and increment `observed_take_count` rather than creating duplicate opponent rows.
+- `user_id`
+- hashed challenge
+- `verified_at`
+- `claimed_at`
+- expiry
 
-## New: live unikaturfare filtering in radar worker
+This table bridges the PWA that initiated login and the browser/Safari instance that opens the e-mail magic link.
 
-`radar_worker.py` now LEFT JOINs nearby zone owners against `user_taken_players`.
+## Resend integration
 
-A nearby zone owner is treated as a current unique-player opportunity when:
+Resend is now used to send TurfRadar verification e-mails from a verified subdomain under `farstad.se`.
 
-1. the zone has a known current owner,
-2. the current owner is not the radar user, and
-3. there is no matching `(user_id, opponent_turf_id)` in `user_taken_players`.
+Secrets/configuration are environment-based. The Resend API key must remain outside Git.
 
-The radar logs unique-player opportunities separately.
+A real delivery test succeeded before the registration flow was connected to Resend.
 
-Verified output during live testing:
+## Magic-link flow
 
-- `blodyx`: 433 zones within 5000 m, 243 currently classified as unique-player opportunities.
-- `H3nkm4n`: 153 zones within 2000 m, 63 currently classified as unique-player opportunities.
+`POST /api/register` now:
 
-Important limitation: `blodyx` has not yet had historical taken-player data imported, so the current "unique" result for that account really means "not observed by TurfRadar since collection began", not "never taken historically".
+1. accepts `email` and a client-generated `challenge`;
+2. validates the e-mail against Turf `/v6/users`;
+3. upserts the local Turf user;
+4. creates/updates the auth identity;
+5. creates a 15-minute verification token;
+6. stores only its SHA-256 hash;
+7. stores only the hash of the client challenge;
+8. sends the raw verification token in a Resend magic link.
 
-For a newly observed/test account the same limitation applies until a historical baseline exists.
+`GET /api/auth/verify`:
 
-## Verified per-player unique-owner query
+- rejects invalid, expired or already-used tokens;
+- marks the e-mail verified;
+- consumes the verification token;
+- marks the pending challenge verified.
 
-A grouped query was tested that shows one row per nearby current owner rather than one row per zone, including:
+Single-use behavior was explicitly tested: the same verification token returned HTTP 410 on the second attempt.
 
-- Turf owner ID
-- owner name
-- number of nearby zones owned
-- distance to nearest owned zone
+## iOS PWA storage issue and challenge/claim solution
 
-For `H3nkm4n`, the query produced real candidates such as:
+A first session implementation set the login cookie directly in the magic-link verification response. This worked in Safari but not reliably in the independently installed iPhone PWA because the PWA can have a separate WebKit storage/cookie context.
 
-- Possanzini - 3 nearby zones, nearest 591 m
-- Paddington - 11 nearby zones, nearest 755 m
-- LauraPalmer - 3 nearby zones, nearest 934 m
-- Lindhardt - 9 nearby zones, nearest 1563 m
+The final design avoids assuming Safari and the Home Screen app share cookie storage.
 
-This is probably the correct conceptual level for unikaturfare notifications: notify about a player/opportunity, not every zone owned by that player.
+The PWA generates a random challenge using Web Crypto and keeps the raw value locally. After the user clicks the magic link, the PWA polls `POST /api/auth/claim` with that challenge. Once the server sees that the matching challenge is verified, it creates the 30-day session in the PWA request context and sets the cookie there.
 
-Expected live behavior is now:
+This flow was verified in a fresh desktop browser and through logout/login on the iPhone PWA.
 
-`unique nearby owner -> user takes a zone from owner -> takeover_worker records opponent -> next radar cycle removes all that owner's zones from unique opportunities`
+## Sessions and protected endpoints
 
-The final disappearance was not visually observed during this session because the moving test player stopped playing, but every participating subsystem was verified independently and the filtering query is live.
+`GET /api/auth/me` verifies that a browser/PWA session identifies the logged-in Turf user without the caller sending Turf ID `28449`.
 
-## Location feed live-motion validation
+A shared `get_current_user()` helper is the backend identity boundary. It hashes the cookie token, resolves an unexpired server session and requires a verified e-mail.
 
-`H3nkm4n` was used to verify that `/v6/users/location` changes frequently enough to support later direction-aware radar.
+The following central endpoints are now session-scoped:
 
-Two observations about 30 seconds apart changed from approximately:
+- `/api/radar`
+- `/api/settings`
+- `/api/push/subscribe`
 
-- `59.342400, 18.056405`
-- to `59.342567, 18.055903`
+This removes the old pattern where a user could be selected through `turf_user_id=28449` defaults/query parameters.
 
-This confirmed real movement flowing through:
+`POST /api/auth/logout` deletes the current server session and removes the cookie.
 
-`Turf -> /v6/users/location -> location-worker -> PostgreSQL/PostGIS`
+End-to-end logout and re-login were verified successfully on iPhone.
 
-V2 may later store a small rolling position history to infer movement direction and speed. Long-term GPS history is not required for that feature.
+## Frontend refactor
 
-## PWA branding update
+The old monolithic `index.html` was split into:
 
-The custom TurfRadar radar/explorer icon is now used as the PWA identity. It should also be used in the dashboard header rather than relying only on the radar emoji.
+- `frontend/index.html`
+- `frontend/styles.css`
+- `frontend/app.js`
 
-PWA and push behavior remain verified on iPhone.
+The client now includes:
 
-## Current ownership data growth
+- session check through `/api/auth/me`;
+- e-mail login form when unauthenticated;
+- Web Crypto challenge creation;
+- local pending-challenge state;
+- challenge polling every 3 seconds;
+- automatic transition to the radar after claim;
+- logout;
+- session-aware radar/settings/push calls;
+- collapsible settings panel;
+- browser-local persistence of auto-refresh and settings visibility.
 
-A database health check later in the session showed:
+A broken intermediate frontend version duplicated radius controls and failed to cache the logout DOM element. It was replaced with a clean, validated three-file frontend. Login/logout works after the replacement.
 
-- total zones: `157498`
-- zones with known owners: `10644`
-- currently unknown owner state: `146854`
-- distinct known current owners: `1671`
-- latest takeover stored: `2026-11-25 22:04:53+00`
+## Service worker observation
 
-Compared with the early checkpoint of 157496 total zones and 1809 known owners, the background ingestion had discovered 2 additional zones and expanded known owner coverage substantially while the system otherwise remained effectively idle in CPU/RAM terms.
+The current service worker does not cache application assets through the Cache API. It handles:
 
-## Documentation corrections / design rules
+- immediate activation (`skipWaiting` / `clients.claim`);
+- Web Push events;
+- notification-click navigation.
 
-The core documentation should now explicitly include:
+Stale frontend behavior briefly observed in Safari was therefore not caused by a TurfRadar-managed Cache API cache. A restart/reload resolved the observed stale UI.
 
-1. `user_taken_players` as the canonical observed opponent-history table.
-2. Historical imports, when found, should bootstrap the same table instead of creating a parallel history model.
-3. `radar_enabled` must only control active radar/push behavior, never take-history collection.
-4. "Unique" is only semantically trustworthy when a user's historical baseline is trustworthy.
-5. Opportunity aggregation should be player-level where sensible. One player owning eleven nearby zones should generally produce one useful opportunity, not eleven notifications.
-6. Notification history/cooldown/grouping remains the next protection needed before the live unique-player radar is connected to automatic Web Push.
+## Current checkpoint
 
-## Immediate next steps
+Authentication/onboarding is now considered a working V1 foundation.
 
-Recommended next sequence:
+Verified:
 
-1. Merge this update into `docs/STATUS.md` and `docs/ARCHITECTURE.md`.
-2. Commit migration 008 and the corrected takeover/radar workers.
-3. Add notification-history/cooldown tables.
-4. Aggregate nearby opportunities per owner and push one useful notification per player/opportunity.
-5. Find/import historical taken-player data for `blodyx` into `user_taken_players`.
-6. Implement automated off-server PostgreSQL backup and test restore.
+- Turf e-mail identification;
+- Resend delivery;
+- one-time verification;
+- hashed auth secrets;
+- challenge/claim login for isolated PWA storage;
+- 30-day sessions;
+- current-user endpoint;
+- session-scoped radar/settings/push ownership;
+- logout;
+- iPhone PWA logout and re-login;
+- desktop browser onboarding;
+- collapsible settings.
+
+## Recommended next steps
+
+1. Add a second real TurfRadar user and verify multi-user isolation end to end.
+2. Verify each user's push subscription is associated with the correct local user.
+3. Add notification history/cooldown/grouping.
+4. Aggregate unikaturfare notifications at owner/player level.
+5. Import reliable historical taken-player data when a source is available.
+6. Implement off-server PostgreSQL backup and test restore.
