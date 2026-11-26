@@ -17,10 +17,15 @@
 <main class="app-shell">
     <header class="brand">
         <img src="/turfradar/icons/icon-192.png" alt="" class="brand-logo" width="64" height="64">
-        <div>
+        <div class="brand-copy">
             <h1>TurfRadar</h1>
             <p class="subtitle">Vad finns runt dig just nu?</p>
         </div>
+        <nav class="top-nav" aria-label="Huvudmeny">
+            <a href="/turfradar/" aria-current="page">Radar</a>
+            <a href="/turfradar/import.html">Historik</a>
+            <a href="/turfradar/help.html">Hjälp</a>
+        </nav>
     </header>
 
     <section id="notice" class="notice" hidden aria-live="polite"></section>
@@ -42,7 +47,7 @@
         </section>
 
         <section class="stats stats-single" aria-label="Unikaturfare">
-            <div class="stat"><strong id="zone-count">-</strong><span>unikaturfare-zoner inom radien</span></div>
+            <div class="stat"><strong id="zone-count">-</strong><span>unika turfare i närheten</span></div>
         </section>
 
         <div class="settings-header">

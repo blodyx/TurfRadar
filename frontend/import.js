@@ -19,25 +19,9 @@ function parseInteger(value) {
 
 function normalizeLines(text) {
     return text
-        .replace(/<br\s*\/?>/gi, "\n")
-        .replace(
-            /<a\b[^>]*>(.*?)<\/a>/gi,
-            "$1"
-        )
-        .replace(/<[^>]+>/g, "")
-        .replace(/&nbsp;/gi, " ")
-        .replace(/&amp;/gi, "&")
-        .replace(/&lt;/gi, "<")
-        .replace(/&gt;/gi, ">")
-        .replace(/&quot;/gi, "\"")
-        .replace(/&#39;/gi, "'")
         .replace(/\r/g, "")
         .split("\n")
-        .map(line =>
-            line
-                .replace(/\u00a0/g, " ")
-                .trim()
-        )
+        .map(line => line.replace(/\u00a0/g, " ").trim())
         .filter(Boolean);
 }
 
@@ -46,75 +30,30 @@ function looksLikeName(value) {
 }
 
 function parseTurfaPage(text) {
+    const lines = normalizeLines(text);
     const rows = [];
 
-    const lines = text
-        .replace(/\r/g, "")
-        .split("\n")
-        .map(line => line.trim())
-        .filter(Boolean);
+    for (let i = 0; i < lines.length - 3; i += 1) {
+        if (!/^\d+$/.test(lines[i])) continue;
+        if (!looksLikeName(lines[i + 1])) continue;
+        if (!INT_RE.test(lines[i + 2])) continue;
+        if (!DATE_RE.test(lines[i + 3])) continue;
 
-    for (const line of lines) {
-        const columns = line.split("\t");
-
-        // A real Turfa TvT row starts with:
-        // # | Name | Takes | First Contact | First Take | ...
-        if (columns.length < 4) {
-            continue;
-        }
-
-        const rowNumber = columns[0].trim();
-        const name = columns[1].trim();
-        const takesText = columns[2].trim();
-        const firstContact = columns[3].trim();
-
-        if (!/^\d+$/.test(rowNumber)) {
-            continue;
-        }
-
-        if (!name) {
-            continue;
-        }
-
-        const takes = parseInteger(takesText);
-
-        if (!Number.isFinite(takes) || takes < 0) {
-            continue;
-        }
+        const name = lines[i + 1];
+        const takes = parseInteger(lines[i + 2]);
+        if (!Number.isFinite(takes) || takes < 0) continue;
 
         let firstTake = null;
-
-        /*
-         * Turfa columns:
-         *
-         * 0  #
-         * 1  Name
-         * 2  Takes
-         * 3  First Contact
-         * 4  First Take
-         *
-         * When Takes > 0, column 4 is the historical
-         * first time we took from this player.
-         */
-        if (
-            takes > 0 &&
-            columns[4] &&
-            DATE_RE.test(columns[4].trim())
-        ) {
-            firstTake =
-                columns[4].trim().replace(" ", "T")
-                + ":00+00:00";
+        if (takes > 0 && DATE_RE.test(lines[i + 4] || "")) {
+            firstTake = lines[i + 4].replace(" ", "T") + ":00+00:00";
         }
 
-        rows.push({
-            name,
-            takes,
-            firstTake
-        });
+        rows.push({ name, takes, firstTake });
     }
 
     return rows;
 }
+
 function addRows(rows) {
     for (const row of rows) {
         const key = row.name.normalize("NFKC").trim().toLocaleLowerCase("sv-SE");
@@ -163,7 +102,7 @@ async function loadStatus() {
             el["current-status"].classList.add("success");
             el["current-status"].textContent = `Tidigare import: ${status.importedPlayers.toLocaleString("sv-SE")} turfare, ${status.importedTakes.toLocaleString("sv-SE")} takes. Senast ${when}.`;
         } else {
-            el["current-status"].textContent = "Ingen Turfa-historik har importerats ännu.";
+            el["current-status"].textContent = "Du har inte importerat någon historik från Turfa ännu.";
         }
     } catch (error) {
         if (/401|authenticated|session/i.test(error.message)) {
@@ -178,14 +117,14 @@ function addPage() {
     const text = el["turfa-data"].value;
     if (!text.trim()) {
         el["parse-message"].className = "message error";
-        el["parse-message"].textContent = "Klistra in en Turfa-sida först.";
+        el["parse-message"].textContent = "Klistra in en sida från Turfa först.";
         return;
     }
 
     const parsed = parseTurfaPage(text);
     if (!parsed.length) {
         el["parse-message"].className = "message error";
-        el["parse-message"].textContent = "Ingen tabell kunde tolkas. Kopiera hela Turfer vs Turfer-sidan inklusive raderna.";
+        el["parse-message"].textContent = "Jag kunde inte läsa tabellen. Kopiera hela tabellen från Turfer vs Turfer och försök igen.";
         return;
     }
 
@@ -194,7 +133,7 @@ function addPage() {
     state.pages += 1;
     el["turfa-data"].value = "";
     el["parse-message"].className = "message success";
-    el["parse-message"].textContent = `Sida ${state.pages} tillagd: ${parsed.length} turfare, ${positives} med Takes > 0.`;
+    el["parse-message"].textContent = `Sida ${state.pages} tillagd: ${parsed.length} turfare, ${positives} som du har tagit från.`;
     render();
 }
 
@@ -214,7 +153,7 @@ async function importData() {
 
     el["import-data"].disabled = true;
     el["import-message"].className = "message";
-    el["import-message"].textContent = `Slår upp och importerar ${rows.length.toLocaleString("sv-SE")} turfare. Det kan ta en stund...`;
+    el["import-message"].textContent = `Importerar ${rows.length.toLocaleString("sv-SE")} turfare...`;
 
     try {
         const result = await requestJson(`${API_BASE}/import/turfa`, {
@@ -224,7 +163,7 @@ async function importData() {
         });
 
         el["import-message"].className = "message success";
-        el["import-message"].textContent = `Klart: ${result.imported.toLocaleString("sv-SE")} av ${result.submitted.toLocaleString("sv-SE")} turfare importerades.`;
+        el["import-message"].textContent = `Klart! ${result.imported.toLocaleString("sv-SE")} turfare finns nu i din historik.`;
 
         el["unresolved-list"].replaceChildren();
         if (result.unresolvedCount > 0) {
@@ -240,7 +179,7 @@ async function importData() {
         await loadStatus();
     } catch (error) {
         el["import-message"].className = "message error";
-        el["import-message"].textContent = `Importen misslyckades: ${error.message}`;
+        el["import-message"].textContent = `Det gick inte att importera historiken: ${error.message}`;
         el["import-data"].disabled = false;
     }
 }

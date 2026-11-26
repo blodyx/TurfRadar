@@ -39,3 +39,7 @@ th { position:sticky; top:0; background:var(--surface); }
 th:nth-child(2),td:nth-child(2) { text-align:right; }
 details { margin-top:14px; }
 @media (max-width:620px) { .summary-grid { grid-template-columns:1fr 1fr; } .button-row { grid-template-columns:1fr; } }
+
+.page-nav { display:flex; gap:8px; flex-wrap:wrap; }
+.page-nav a { color:var(--muted); text-decoration:none; font-weight:700; padding:8px 10px; border:1px solid var(--border); border-radius:10px; background:#0b1724; }
+.page-nav a[aria-current="page"] { color:var(--accent); border-color:var(--accent-strong); }
