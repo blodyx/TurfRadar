@@ -810,7 +810,146 @@ def update_settings(
         "radarEnabled": row["radar_enabled"],
     }
 
+# ---------------------------------------------------------------------------
+# Admin
+# ---------------------------------------------------------------------------
 
+ADMIN_TURF_USER_IDS = {28449}
+
+
+def require_admin(request: Request):
+    current_user = get_current_user(request)
+
+    if current_user["turf_user_id"] not in ADMIN_TURF_USER_IDS:
+        raise HTTPException(
+            status_code=403,
+            detail="Admin access required",
+        )
+
+    return current_user
+
+
+@app.get("/api/admin/status")
+def admin_status(request: Request):
+    require_admin(request)
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute(
+                """
+                SELECT
+                    pg_database_size(current_database()) AS database_bytes,
+                    pg_size_pretty(
+                        pg_database_size(current_database())
+                    ) AS database_size
+                """
+            )
+            database = cur.fetchone()
+
+            cur.execute(
+                """
+                SELECT
+                    relname AS table_name,
+                    n_live_tup AS estimated_rows,
+                    pg_total_relation_size(relid) AS total_bytes,
+                    pg_size_pretty(
+                        pg_total_relation_size(relid)
+                    ) AS total_size
+                FROM pg_stat_user_tables
+                ORDER BY pg_total_relation_size(relid) DESC
+                """
+            )
+            tables = cur.fetchall()
+
+            cur.execute(
+                """
+                SELECT
+                    u.id,
+                    u.turf_user_id,
+                    u.turf_name,
+                    u.radar_enabled,
+                    u.radius_m,
+                    u.position_updated_at,
+                    CASE
+                        WHEN u.position_updated_at IS NULL
+                            THEN NULL
+                        ELSE EXTRACT(
+                            EPOCH FROM (
+                                NOW() - u.position_updated_at
+                            )
+                        )::INTEGER
+                    END AS position_age_seconds,
+                    COUNT(DISTINCT ps.id) AS push_subscriptions
+                FROM users u
+                LEFT JOIN push_subscriptions ps
+                    ON ps.user_id = u.id
+                GROUP BY u.id
+                ORDER BY u.turf_name
+                """
+            )
+            users = cur.fetchall()
+
+            cur.execute(
+                """
+                SELECT
+                    key,
+                    value,
+                    updated_at,
+                    EXTRACT(
+                        EPOCH FROM (
+                            NOW() - updated_at
+                        )
+                    )::INTEGER AS age_seconds
+                FROM system_state
+                ORDER BY key
+                """
+            )
+            worker_state = cur.fetchall()
+
+            cur.execute(
+                """
+                SELECT
+                    COUNT(*) AS zones,
+                    COUNT(*) FILTER (
+                        WHERE current_owner_id IS NOT NULL
+                    ) AS owned_zones,
+                    COUNT(*) FILTER (
+                        WHERE is_ftt_candidate = TRUE
+                    ) AS ftt_candidates
+                FROM zones
+                """
+            )
+            zones = cur.fetchone()
+
+            cur.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM radar_player_state
+                WHERE currently_visible = TRUE
+                """
+            )
+            visible_players = cur.fetchone()
+
+            cur.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM radar_ftt_state
+                """
+            )
+            ftt_state = cur.fetchone()
+
+    return {
+        "database": database,
+        "tables": tables,
+        "users": users,
+        "systemState": worker_state,
+        "zones": zones,
+        "radar": {
+            "visibleUniquePlayers": visible_players["count"],
+            "trackedFttZones": ftt_state["count"],
+        },
+    }
 
 # ---------------------------------------------------------------------------
 # Push

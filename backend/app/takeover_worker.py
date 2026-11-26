@@ -1,12 +1,14 @@
 from datetime import datetime, timedelta
-
 import os
-import httpx
-import psycopg
 import time
 
+import httpx
+import psycopg
 
-TAKEOVER_URL = "https://api.turfgame.com/v6/feeds/takeover"
+
+FEED_URL = "https://api.turfgame.com/v6/feeds/takeover+zone"
+POLL_INTERVAL_SECONDS = 60
+OVERLAP_MINUTES = 2
 
 
 def get_connection():
@@ -20,14 +22,20 @@ def get_connection():
 
 def upsert_zone(cur, event):
     zone = event["zone"]
-
+    event_type = event.get("type")
     owner = zone.get("currentOwner") or event.get("currentOwner")
     region = zone.get("region") or {}
     area = region.get("area") or {}
     zone_type = zone.get("type") or {}
-
     longitude = zone["longitude"]
     latitude = zone["latitude"]
+    total_takeovers = zone.get("totalTakeovers")
+
+    is_ftt_candidate = (
+        event_type == "zone"
+        and total_takeovers == 0
+        and owner is None
+    )
 
     cur.execute(
         """
@@ -51,6 +59,7 @@ def upsert_zone(cur, event):
             total_takeovers,
             date_created,
             date_last_taken,
+            is_ftt_candidate,
             updated_at
         )
         VALUES (
@@ -76,6 +85,7 @@ def upsert_zone(cur, event):
             %(total_takeovers)s,
             %(date_created)s,
             %(date_last_taken)s,
+            %(is_ftt_candidate)s,
             NOW()
         )
         ON CONFLICT (id)
@@ -98,6 +108,7 @@ def upsert_zone(cur, event):
             total_takeovers = EXCLUDED.total_takeovers,
             date_created = EXCLUDED.date_created,
             date_last_taken = EXCLUDED.date_last_taken,
+            is_ftt_candidate = EXCLUDED.is_ftt_candidate,
             updated_at = NOW()
         """,
         {
@@ -116,27 +127,28 @@ def upsert_zone(cur, event):
             "zone_type_name": zone_type.get("name"),
             "points_per_hour": zone.get("pointsPerHour"),
             "takeover_points": zone.get("takeoverPoints"),
-            "total_takeovers": zone.get("totalTakeovers"),
+            "total_takeovers": total_takeovers,
             "date_created": zone.get("dateCreated"),
             "date_last_taken": zone.get("dateLastTaken"),
+            "is_ftt_candidate": is_ftt_candidate,
         },
     )
 
-def record_taken_player(cur, event):
-    zone = event["zone"]
 
+def record_taken_player(cur, event):
+    if event.get("type") != "takeover":
+        return
+
+    zone = event["zone"]
     current_owner = (
         zone.get("currentOwner")
         or event.get("currentOwner")
     )
-
     previous_owner = zone.get("previousOwner")
 
     if not current_owner or not previous_owner:
         return
 
-    # Samma owner på båda sidor ska inte registreras
-    # som en take från en annan spelare.
     if current_owner["id"] == previous_owner["id"]:
         return
 
@@ -148,14 +160,12 @@ def record_taken_player(cur, event):
         """,
         (current_owner["id"],),
     )
-
     user = cur.fetchone()
 
     if not user:
         return
 
     user_id = user[0]
-
 
     cur.execute(
         """
@@ -195,9 +205,13 @@ def record_taken_player(cur, event):
     )
 
 
-def get_last_takeover_time(cur):
+def get_last_feed_time(cur):
     cur.execute(
-        "SELECT value FROM system_state WHERE key = 'last_takeover_time'"
+        """
+        SELECT value
+        FROM system_state
+        WHERE key = 'last_takeover_time'
+        """
     )
     row = cur.fetchone()
 
@@ -207,11 +221,19 @@ def get_last_takeover_time(cur):
     return datetime.fromisoformat(row[0])
 
 
-def save_last_takeover_time(cur, event_time):
+def save_last_feed_time(cur, event_time):
     cur.execute(
         """
-        INSERT INTO system_state (key, value, updated_at)
-        VALUES ('last_takeover_time', %s, NOW())
+        INSERT INTO system_state (
+            key,
+            value,
+            updated_at
+        )
+        VALUES (
+            'last_takeover_time',
+            %s,
+            NOW()
+        )
         ON CONFLICT (key)
         DO UPDATE SET
             value = EXCLUDED.value,
@@ -220,78 +242,85 @@ def save_last_takeover_time(cur, event_time):
         (event_time,),
     )
 
-#def main():
-#    response = httpx.get(TAKEOVER_URL, timeout=30.0)
-#    response.raise_for_status()
-#    events = response.json()
-#
-#    print(f"Received {len(events)} takeover events", flush=True)
-#
-#    with get_connection() as conn:
-##        with conn.cursor() as cur:
-#            for event in events:
-#                upsert_zone(cur, event)
-#
-#    print(f"Upserted {len(events)} takeover events", flush=True)
+
+def parse_event_time(event):
+    return datetime.fromisoformat(event["time"])
+
 
 def main():
     with get_connection() as conn:
         with conn.cursor() as cur:
-            last_time = get_last_takeover_time(cur)
-
+            last_time = get_last_feed_time(cur)
             params = {}
 
             if last_time:
-                after_time = last_time - timedelta(minutes=2)
-
+                after_time = last_time - timedelta(
+                    minutes=OVERLAP_MINUTES
+                )
                 params["afterDate"] = after_time.strftime(
                     "%Y-%m-%dT%H:%M:%S+0000"
                 )
 
             response = httpx.get(
-                TAKEOVER_URL,
+                FEED_URL,
                 params=params,
                 timeout=30.0,
             )
             response.raise_for_status()
-
             events = response.json()
 
-            print(
-                f"Received {len(events)} takeover events "
-                f"after {params.get('afterDate', 'initial feed')}",
-                flush=True,
-            )
-
+            takeover_events = 0
+            zone_events = 0
+            ignored_events = 0
             newest_time = last_time
 
+            # The feed is normally newest-first. Processing oldest-first
+            # ensures a later takeover cannot be overwritten by an older
+            # zone-created event inside the overlap window.
+            events.sort(key=parse_event_time)
+
             for event in events:
+                event_type = event.get("type")
+
+                if event_type not in ("takeover", "zone"):
+                    ignored_events += 1
+                    continue
+
                 upsert_zone(cur, event)
-                record_taken_player(cur, event)
 
-                event_time = datetime.fromisoformat(
-                    event["time"]
-                )
+                if event_type == "takeover":
+                    takeover_events += 1
+                    record_taken_player(cur, event)
+                else:
+                    zone_events += 1
 
+                event_time = parse_event_time(event)
                 if newest_time is None or event_time > newest_time:
                     newest_time = event_time
 
             if newest_time:
-                save_last_takeover_time(
+                save_last_feed_time(
                     cur,
-                    newest_time.isoformat()
+                    newest_time.isoformat(),
                 )
 
     print(
-        f"Upserted {len(events)} takeover events",
+        f"Feed: {takeover_events} takeover, "
+        f"{zone_events} zone, "
+        f"{ignored_events} ignored events "
+        f"after {params.get('afterDate', 'initial feed')}",
         flush=True,
     )
+
 
 if __name__ == "__main__":
     while True:
         try:
             main()
         except Exception as exc:
-            print(f"Worker error: {exc}", flush=True)
+            print(
+                f"Worker error: {exc}",
+                flush=True,
+            )
 
-        time.sleep(60)
+        time.sleep(POLL_INTERVAL_SECONDS)

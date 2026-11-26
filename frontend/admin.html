@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#111827">
+    <title>TurfRadar Admin</title>
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+
+<header>
+    <div>
+        <div class="eyebrow">TURFRADAR</div>
+        <h1>Systemstatus</h1>
+    </div>
+
+    <div class="status" id="systemStatus">
+        <span class="status-dot"></span>
+        <span>Kontrollerar...</span>
+    </div>
+</header>
+
+<main>
+
+    <section class="cards">
+        <div class="card">
+            <div class="label">Databas</div>
+            <div class="value" id="dbSize">–</div>
+        </div>
+
+        <div class="card">
+            <div class="label">Zoner</div>
+            <div class="value" id="zoneCount">–</div>
+        </div>
+
+        <div class="card">
+            <div class="label">Ägda zoner</div>
+            <div class="value" id="ownedZones">–</div>
+        </div>
+
+        <div class="card">
+            <div class="label">Användare</div>
+            <div class="value" id="userCount">–</div>
+        </div>
+
+        <div class="card">
+            <div class="label">Synliga unika turfare</div>
+            <div class="value" id="visiblePlayers">–</div>
+        </div>
+
+        <div class="card">
+            <div class="label">FTT-kandidater</div>
+            <div class="value" id="fttCandidates">–</div>
+        </div>
+    </section>
+
+
+    <section class="panel">
+
+        <div class="panel-header">
+            <h2>Workers</h2>
+            <div id="lastRefresh"></div>
+        </div>
+
+        <div id="workerState"></div>
+
+    </section>
+
+
+    <section class="panel">
+
+        <div class="panel-header">
+            <h2>Användare</h2>
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Turfare</th>
+                        <th>Radar</th>
+                        <th>Radie</th>
+                        <th>Position</th>
+                        <th>Push</th>
+                    </tr>
+                </thead>
+
+                <tbody id="usersTable"></tbody>
+            </table>
+        </div>
+
+    </section>
+
+
+    <section class="panel">
+
+        <div class="panel-header">
+            <h2>Databastabeller</h2>
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Tabell</th>
+                        <th>Rader</th>
+                        <th>Storlek</th>
+                    </tr>
+                </thead>
+
+                <tbody id="tablesTable"></tbody>
+            </table>
+        </div>
+
+    </section>
+
+</main>
+
+<script src="admin.js"></script>
+
+</body>
+</html>
