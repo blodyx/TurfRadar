@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="sv">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#07111f">
+    <title>Importera Turfa-data - TurfRadar</title>
+    <link rel="stylesheet" href="/turfradar/import.css">
+    <link rel="apple-touch-icon" href="/turfradar/icons/apple-touch-icon.png">
+</head>
+<body>
+<main class="shell">
+    <header class="topbar">
+        <a href="/turfradar/" class="back-link">Tillbaka</a>
+        <div>
+            <h1>Importera Turfa-data</h1>
+            <p>Förbättra unikaturfare-radarn med din historik.</p>
+        </div>
+    </header>
+
+    <section class="card instructions">
+        <h2>Så gör du</h2>
+        <ol>
+            <li>Öppna Turfa och välj <strong>Turfer vs Turfer</strong> samt <strong>Total</strong>.</li>
+            <li>Kopiera hela sida 1 och klistra in nedan.</li>
+            <li>Tryck <strong>Lägg till sida</strong>. Upprepa för sida 2 och 3.</li>
+            <li>Granska sammanfattningen och tryck <strong>Importera historik</strong>.</li>
+        </ol>
+        <p>Endast turfare där <strong>Takes är större än 0</strong> importeras. Rader från samma sida kan klistras in igen utan att räknas dubbelt.</p>
+    </section>
+
+    <section id="current-status" class="card status-card" aria-live="polite">
+        Läser tidigare import...
+    </section>
+
+    <section class="card">
+        <label for="turfa-data" class="field-label">Klistra in en Turfa-sida</label>
+        <textarea id="turfa-data" rows="13" spellcheck="false" placeholder="Klistra in hela Turfer vs Turfer-sidan här..."></textarea>
+        <div class="button-row">
+            <button type="button" id="add-page" class="button primary">Lägg till sida</button>
+            <button type="button" id="clear-import" class="button secondary">Rensa allt</button>
+        </div>
+        <p id="parse-message" class="message" aria-live="polite"></p>
+    </section>
+
+    <section class="summary-grid" aria-label="Importöversikt">
+        <div class="summary"><strong id="page-count">0</strong><span>sidor tillagda</span></div>
+        <div class="summary"><strong id="row-count">0</strong><span>turfare hittade</span></div>
+        <div class="summary"><strong id="taken-count">0</strong><span>med Takes &gt; 0</span></div>
+        <div class="summary"><strong id="take-total">0</strong><span>historiska takes</span></div>
+    </section>
+
+    <section class="card preview-card">
+        <div class="section-heading">
+            <h2>Förhandsgranskning</h2>
+            <span id="preview-note">Inga sidor tillagda</span>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Namn</th><th>Takes</th><th>Första take</th></tr></thead>
+                <tbody id="preview-body"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card import-actions">
+        <button type="button" id="import-data" class="button primary large" disabled>Importera historik</button>
+        <p id="import-message" class="message" aria-live="polite"></p>
+        <details id="unresolved-details" hidden>
+            <summary>Namn som inte kunde matchas</summary>
+            <ul id="unresolved-list"></ul>
+        </details>
+    </section>
+</main>
+<script src="/turfradar/import.js" defer></script>
+</body>
+</html>

@@ -5,6 +5,7 @@ import httpx
 import psycopg
 import hashlib
 import secrets
+from app.turfa_import import register_turfa_import_routes
 from datetime import datetime, timedelta, timezone
 from cryptography.hazmat.primitives import serialization
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -125,6 +126,8 @@ def get_current_user(request: Request):
 
     return user
 
+
+
 def send_verification_email(email: str, turf_name: str, token: str):
     verify_url = (
         "https://farstad.se/turfradar/"
@@ -218,6 +221,11 @@ def lookup_turf_user_by_email(email: str):
 
     return users[0]
 
+register_turfa_import_routes(
+    app,
+    get_connection,
+    get_current_user,
+)
 
 # ---------------------------------------------------------------------------
 # Health
@@ -636,22 +644,61 @@ def radar(request: Request):
                     z.current_owner_name,
                     z.region_id,
                     z.region_name,
+
                     ROUND(
                         ST_Distance(
                             z.location,
                             u.location
                         )
                     )::INTEGER AS distance_m
+
                 FROM zones z
+
                 JOIN users u
                     ON u.id = %s
+
+                LEFT JOIN user_taken_players utp
+                    ON utp.user_id = u.id
+                    AND utp.opponent_turf_id =
+                        z.current_owner_id
+
+                LEFT JOIN turfa_taken_players ttp
+                    ON ttp.user_id = u.id
+                    AND (
+                        ttp.opponent_turf_id =
+                            z.current_owner_id
+
+                        OR (
+                            ttp.opponent_turf_id IS NULL
+                            AND
+                            ttp.opponent_name_normalized =
+                                LOWER(
+                                    z.current_owner_name
+                                )
+                        )
+                    )
+
                 WHERE
                     u.location IS NOT NULL
+
+                    AND z.current_owner_id
+                        IS NOT NULL
+
+                    AND z.current_owner_id
+                        <> u.turf_user_id
+
+                    AND utp.opponent_turf_id
+                        IS NULL
+
+                    AND ttp.id
+                        IS NULL
+
                     AND ST_DWithin(
                         z.location,
                         u.location,
                         u.radius_m
                     )
+
                 ORDER BY distance_m
                 """,
                 (user["id"],),
@@ -659,32 +706,39 @@ def radar(request: Request):
 
             zones = cur.fetchall()
 
-    owned_count = sum(
-        1
-        for zone in zones
-        if zone["current_owner_id"] is not None
-    )
-
     return {
         "user": {
-            "turfUserId": user["turf_user_id"],
-            "name": user["turf_name"],
-            "radiusM": user["radius_m"],
-            "radarEnabled": user["radar_enabled"],
-            "latitude": user["latitude"],
-            "longitude": user["longitude"],
-            "positionUpdatedAt": user["position_updated_at"],
-            "positionAgeSeconds": user[
-                "position_age_seconds"
-            ],
+            "turfUserId":
+                user["turf_user_id"],
+
+            "name":
+                user["turf_name"],
+
+            "radiusM":
+                user["radius_m"],
+
+            "radarEnabled":
+                user["radar_enabled"],
+
+            "latitude":
+                user["latitude"],
+
+            "longitude":
+                user["longitude"],
+
+            "positionUpdatedAt":
+                user["position_updated_at"],
+
+            "positionAgeSeconds":
+                user["position_age_seconds"],
         },
+
         "summary": {
-            "zones": len(zones),
-            "ownedZones": owned_count,
+            "uniquePlayers": len(zones),
         },
+
         "zones": zones[:20],
     }
-
 
 
 # ---------------------------------------------------------------------------

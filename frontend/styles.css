@@ -56,3 +56,5 @@ h2 { margin:28px 0 12px; font-size:1.25rem; }
 .auth-form label { font-weight:700; }
 .auth-form input { min-height:46px; width:100%; border:1px solid var(--border-strong); border-radius:10px; padding:10px 12px; background:var(--surface-muted); color:var(--text); }
 @media (max-width:480px) { .radius-buttons { grid-template-columns:repeat(2,1fr); } .button-row { grid-template-columns:1fr; } }
+
+.stats-single { grid-template-columns: 1fr; }
